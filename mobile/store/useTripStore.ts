@@ -1,0 +1,49 @@
+
+import { create } from 'zustand';
+import ApiClient from '../api/client';
+
+interface Trip {
+    id: string;
+    status: 'requested' | 'accepted' | 'en_route' | 'boarding' | 'in_progress' | 'completed' | 'cancelled';
+    pickupLocation: string;
+    destinationLocation: string;
+    pickupLat: number;
+    pickupLon: number;
+    destLat: number;
+    destLon: number;
+    fare?: number;
+}
+
+interface TripState {
+    currentTrip: Trip | null;
+    availableTrips: Trip[];
+    loading: boolean;
+    setCurrentTrip: (trip: Trip | null) => void;
+    setAvailableTrips: (trips: Trip[]) => void;
+    updateTripStatus: (status: Trip['status']) => void;
+    fetchAvailableTrips: () => Promise<void>;
+    clearTrips: () => void;
+}
+
+export const useTripStore = create<TripState>((set) => ({
+    currentTrip: null,
+    availableTrips: [],
+    loading: false,
+    setCurrentTrip: (trip) => set({ currentTrip: trip }),
+    setAvailableTrips: (trips) => set({ availableTrips: trips }),
+    updateTripStatus: (status) => set((state) => ({
+        currentTrip: state.currentTrip ? { ...state.currentTrip, status } : null
+    })),
+    fetchAvailableTrips: async () => {
+        set({ loading: true });
+        try {
+            const res = await ApiClient.get('/trips/available');
+            set({ availableTrips: res.data });
+        } catch (error) {
+            console.error('[TripStore] Fetch failed:', error);
+        } finally {
+            set({ loading: false });
+        }
+    },
+    clearTrips: () => set({ currentTrip: null, availableTrips: [] }),
+}));
