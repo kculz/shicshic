@@ -6,29 +6,43 @@ interface TripAttributes {
     id: string;
     passengerId: string;
     driverId?: string;
+    poolId?: string;
     pickupLocation: string;
     destinationLocation: string;
+    pickupLat: number;
+    pickupLon: number;
+    destLat: number;
+    destLon: number;
     status: 'requested' | 'accepted' | 'en_route' | 'boarding' | 'in_progress' | 'completed' | 'cancelled';
     fare?: number;
     isShared: boolean;
+    seatsRequested: number;
+    maxSeats: number;
     start_time?: Date;
     end_time?: Date;
 }
 
-interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'isShared'> { }
+interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'isShared' | 'seatsRequested' | 'maxSeats' | 'poolId'> { }
 
 class Trip extends Model<TripAttributes, TripCreationAttributes> implements TripAttributes {
-    public id!: string;
-    public passengerId!: string;
-    public driverId?: string;
-    public pickupLocation!: string;
-    public destinationLocation!: string;
-    public status!: 'requested' | 'accepted' | 'en_route' | 'boarding' | 'in_progress' | 'completed' | 'cancelled';
-    public fare?: number;
-    public isShared!: boolean;
+    declare id: string;
+    declare passengerId: string;
+    declare driverId?: string;
+    declare poolId?: string;
+    declare pickupLocation: string;
+    declare destinationLocation: string;
+    declare pickupLat: number;
+    declare pickupLon: number;
+    declare destLat: number;
+    declare destLon: number;
+    declare status: 'requested' | 'accepted' | 'en_route' | 'boarding' | 'in_progress' | 'completed' | 'cancelled';
+    declare fare?: number;
+    declare isShared: boolean;
+    declare seatsRequested: number;
+    declare maxSeats: number;
 
-    public readonly createdAt!: Date;
-    public readonly updatedAt!: Date;
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 Trip.init(
@@ -46,6 +60,10 @@ Trip.init(
             type: DataTypes.UUID,
             allowNull: true,
         },
+        poolId: {
+            type: DataTypes.UUID,
+            allowNull: true,
+        },
         pickupLocation: {
             type: DataTypes.STRING,
             allowNull: false,
@@ -53,6 +71,22 @@ Trip.init(
         destinationLocation: {
             type: DataTypes.STRING,
             allowNull: false,
+        },
+        pickupLat: {
+            type: DataTypes.DECIMAL(10, 7),
+            allowNull: true,
+        },
+        pickupLon: {
+            type: DataTypes.DECIMAL(10, 7),
+            allowNull: true,
+        },
+        destLat: {
+            type: DataTypes.DECIMAL(10, 7),
+            allowNull: true,
+        },
+        destLon: {
+            type: DataTypes.DECIMAL(10, 7),
+            allowNull: true,
         },
         status: {
             type: DataTypes.ENUM('requested', 'accepted', 'en_route', 'boarding', 'in_progress', 'completed', 'cancelled'),
@@ -67,6 +101,16 @@ Trip.init(
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
+        },
+        seatsRequested: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1,
+        },
+        maxSeats: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 4,
         },
     },
     {

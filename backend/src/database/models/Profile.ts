@@ -11,6 +11,10 @@ interface ProfileAttributes {
     idCardBackUrl?: string | null;
     selfieUrl?: string | null;
     kycStatus: 'pending' | 'approved' | 'rejected';
+    vehicleMake?: string | null;
+    vehicleModel?: string | null;
+    vehiclePlate?: string | null;
+    vehicleColor?: string | null;
     rejectionReason?: string | null;
     createdAt?: Date;
     updatedAt?: Date;
@@ -19,17 +23,21 @@ interface ProfileAttributes {
 interface ProfileCreationAttributes extends Optional<ProfileAttributes, 'id' | 'kycStatus'> { }
 
 class Profile extends Model<ProfileAttributes, ProfileCreationAttributes> implements ProfileAttributes {
-    public id!: string;
-    public userId!: string;
-    public fullName?: string | null;
-    public idCardFrontUrl?: string | null;
-    public idCardBackUrl?: string | null;
-    public selfieUrl?: string | null;
-    public kycStatus!: 'pending' | 'approved' | 'rejected';
-    public rejectionReason?: string | null;
+    declare id: string;
+    declare userId: string;
+    declare fullName?: string | null;
+    declare idCardFrontUrl?: string | null;
+    declare idCardBackUrl?: string | null;
+    declare selfieUrl?: string | null;
+    declare kycStatus: 'pending' | 'approved' | 'rejected';
+    declare vehicleMake?: string | null;
+    declare vehicleModel?: string | null;
+    declare vehiclePlate?: string | null;
+    declare vehicleColor?: string | null;
+    declare rejectionReason?: string | null;
 
-    public readonly createdAt!: Date;
-    public readonly updatedAt!: Date;
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 Profile.init(
@@ -70,6 +78,22 @@ Profile.init(
         },
         rejectionReason: {
             type: DataTypes.TEXT,
+            allowNull: true,
+        },
+        vehicleMake: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        vehicleModel: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        vehiclePlate: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        vehicleColor: {
+            type: DataTypes.STRING,
             allowNull: true,
         },
     },

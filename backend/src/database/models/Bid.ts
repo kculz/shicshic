@@ -10,7 +10,9 @@ interface BidAttributes {
     driverPhone: string;
     driverRating: number;
     vehicleMake: string;
+    vehicleModel?: string;
     vehiclePlate: string;
+    vehicleColor?: string;
     offeredFare: number;
     currency: 'USD' | 'ZWL';
     status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
@@ -20,20 +22,22 @@ interface BidAttributes {
 interface BidCreationAttributes extends Optional<BidAttributes, 'id' | 'status'> { }
 
 class Bid extends Model<BidAttributes, BidCreationAttributes> implements BidAttributes {
-    public id!: string;
-    public tripId!: string;
-    public driverId!: string;
-    public driverName!: string;
-    public driverPhone!: string;
-    public driverRating!: number;
-    public vehicleMake!: string;
-    public vehiclePlate!: string;
-    public offeredFare!: number;
-    public currency!: 'USD' | 'ZWL';
-    public status!: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
-    public estimatedArrivalMins!: number;
-    public readonly createdAt!: Date;
-    public readonly updatedAt!: Date;
+    declare id: string;
+    declare tripId: string;
+    declare driverId: string;
+    declare driverName: string;
+    declare driverPhone: string;
+    declare driverRating: number;
+    declare vehicleMake: string;
+    declare vehicleModel?: string;
+    declare vehiclePlate: string;
+    declare vehicleColor?: string;
+    declare offeredFare: number;
+    declare currency: 'USD' | 'ZWL';
+    declare status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+    declare estimatedArrivalMins: number;
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 Bid.init(
@@ -45,7 +49,9 @@ Bid.init(
         driverPhone: { type: DataTypes.STRING, allowNull: false },
         driverRating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 4.5 },
         vehicleMake: { type: DataTypes.STRING, allowNull: false },
+        vehicleModel: { type: DataTypes.STRING, allowNull: true },
         vehiclePlate: { type: DataTypes.STRING, allowNull: false },
+        vehicleColor: { type: DataTypes.STRING, allowNull: true },
         offeredFare: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
         currency: { type: DataTypes.ENUM('USD', 'ZWL'), allowNull: false, defaultValue: 'USD' },
         status: {

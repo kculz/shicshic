@@ -7,6 +7,7 @@ import morgan from 'morgan';
 import userRoutes from './api/v1/routes/user.route.js';
 import profileRoutes from './api/v1/routes/profile.route.js';
 import tripRoutes from './api/v1/routes/trip.route.js';
+import paymentRoutes from './api/v1/routes/payment.route.js';
 import sequelize from './config/database.js';
 // Models — imported to ensure Sequelize registers them for sync
 import './database/models/Bid.js';
@@ -34,6 +35,7 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/profiles', profileRoutes);
 app.use('/api/v1/trips', tripRoutes);
+app.use('/api/v1/payments', paymentRoutes);
 
 // Base route for v1
 app.get('/api/v1', (req: Request, res: Response) => {

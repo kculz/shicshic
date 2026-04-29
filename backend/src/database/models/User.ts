@@ -7,20 +7,22 @@ interface UserAttributes {
     phoneNumber: string;
     role: 'passenger' | 'driver' | 'admin' | 'support';
     isVerified: boolean;
+    credits: number;
     createdAt?: Date;
     updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'isVerified'> { }
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'isVerified' | 'credits'> { }
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
-    public id!: string;
-    public phoneNumber!: string;
-    public role!: 'passenger' | 'driver' | 'admin' | 'support';
-    public isVerified!: boolean;
+    declare id: string;
+    declare phoneNumber: string;
+    declare role: 'passenger' | 'driver' | 'admin' | 'support';
+    declare isVerified: boolean;
+    declare credits: number;
 
-    public readonly createdAt!: Date;
-    public readonly updatedAt!: Date;
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 User.init(
@@ -44,6 +46,11 @@ User.init(
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
+        },
+        credits: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0,
         },
     },
     {

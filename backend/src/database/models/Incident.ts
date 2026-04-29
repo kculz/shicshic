@@ -17,16 +17,16 @@ interface IncidentAttributes {
 interface IncidentCreationAttributes extends Optional<IncidentAttributes, 'id' | 'status'> { }
 
 class Incident extends Model<IncidentAttributes, IncidentCreationAttributes> implements IncidentAttributes {
-    public id!: string;
-    public tripId!: string;
-    public reporterId!: string;
-    public category!: 'theft' | 'assault' | 'harassment' | 'accident' | 'damage' | 'fraud' | 'unsafe_driving' | 'other';
-    public description!: string;
-    public status!: 'pending' | 'investigating' | 'resolved' | 'dismissed';
-    public evidenceUrls?: string[];
+    declare id: string;
+    declare tripId: string;
+    declare reporterId: string;
+    declare category: 'theft' | 'assault' | 'harassment' | 'accident' | 'damage' | 'fraud' | 'unsafe_driving' | 'other';
+    declare description: string;
+    declare status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
+    declare evidenceUrls?: string[];
 
-    public readonly createdAt!: Date;
-    public readonly updatedAt!: Date;
+    declare readonly createdAt: Date;
+    declare readonly updatedAt: Date;
 }
 
 Incident.init(
