@@ -156,7 +156,14 @@ export const verifyDocumentAndFace = async (
     }
 };
 
-export const processKYCUpdate = async (userId: string, data: { idCardFrontUrl: string; selfieUrl: string }) => {
+export const processKYCUpdate = async (userId: string, data: { 
+    idCardFrontUrl: string; 
+    selfieUrl: string;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehiclePlate?: string;
+    vehicleColor?: string;
+}) => {
     const profile = await Profile.findOne({ where: { userId } });
     if (!profile) throw new Error('Profile not found');
 
@@ -170,6 +177,10 @@ export const processKYCUpdate = async (userId: string, data: { idCardFrontUrl: s
         idCardFrontUrl: data.idCardFrontUrl,
         selfieUrl: data.selfieUrl,
         kycStatus: newStatus,
+        vehicleMake: data.vehicleMake || profile.vehicleMake,
+        vehicleModel: data.vehicleModel || profile.vehicleModel,
+        vehiclePlate: data.vehiclePlate || profile.vehiclePlate,
+        vehicleColor: data.vehicleColor || profile.vehicleColor,
         rejectionReason: result.recommendation === 'reject'
             ? 'Verification failed: ID and face do not match'
             : null

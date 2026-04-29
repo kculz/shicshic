@@ -36,12 +36,18 @@ export const verifyOTP = async (phoneNumber: string, otp: string): Promise<boole
     return stored === otp;
 };
 
-export const createUser = async (phoneNumber: string, role: 'passenger' | 'driver') => {
+export const createUser = async (phoneNumber: string, role: 'passenger' | 'driver', fullName?: string) => {
+    // Check if user already exists
+    const existingUser = await User.findOne({ where: { phoneNumber } });
+    if (existingUser) {
+        return existingUser;
+    }
+
     const user = await User.create({ phoneNumber, role });
-    const userId = user.id || (user as any).dataValues?.id;
+    const userId = user.id;
 
     if (userId) {
-        await Profile.create({ userId });
+        await Profile.create({ userId, fullName });
     } else {
         console.error('[UserService] Failed to get user ID after creation, profile not created');
     }

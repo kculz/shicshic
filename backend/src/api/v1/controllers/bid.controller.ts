@@ -2,6 +2,9 @@ import type { Request, Response } from 'express';
 import Bid from '../../../database/models/Bid.js';
 import Trip from '../../../database/models/Trip.js';
 import ChatMessage from '../../../database/models/ChatMessage.js';
+import Profile from '../../../database/models/Profile.js';
+import User from '../../../database/models/User.js';
+import Transaction from '../../../database/models/Transaction.js';
 
 // ─── Mock driver pool (replace with real drivers from User table later) ─────
 const MOCK_DRIVERS = [
@@ -55,14 +58,17 @@ export const simulateDriverBids = async (req: Request, res: Response) => {
         }
 
         const { passengerFare } = req.body as { passengerFare: number };
-        console.log(`[BidSim] Simulating bids for trip ${tripId} with passenger fare: ${passengerFare}`);
+        console.log(`[BidSim] Simulating bids for trip ${tripId} ${trip.poolId ? `(Pool: ${trip.poolId})` : ''} with passenger fare: ${passengerFare}`);
+
+        // If it's a shared trip, drivers might offer slightly lower fares
+        const discount = trip.isShared ? 0.8 : 1.0;
 
         // Simulate 2-3 drivers bidding around the passenger's offer
         const bids = await Promise.all(
             MOCK_DRIVERS.slice(0, 3).map(async (driver, i) => {
                 // Drivers offer within ±15% of passenger's offer
                 const variance = 1 + (i === 0 ? 0 : i === 1 ? 0.1 : -0.05);
-                const offeredFare = parseFloat((passengerFare * variance).toFixed(2));
+                const offeredFare = parseFloat((passengerFare * variance * discount).toFixed(2));
 
                 return Bid.create({
                     tripId,
@@ -98,6 +104,52 @@ export const getTripBids = async (req: Request, res: Response) => {
 };
 
 /**
+ * POST /trips/:id/bids
+ * Real endpoint for drivers to place a bid.
+ */
+export const placeBid = async (req: Request, res: Response) => {
+    try {
+        const tripId = req.params.id as string;
+        const { driverId, offeredFare, estimatedArrivalMins } = req.body;
+
+        const trip = await Trip.findByPk(tripId);
+        if (!trip) { res.status(404).json({ error: 'Trip not found' }); return; }
+
+        const driver = await User.findByPk(driverId);
+        if (!driver) { res.status(404).json({ error: 'Driver not found' }); return; }
+
+        const profile = await Profile.findOne({ where: { userId: driverId } });
+        if (!profile || !profile.fullName || !profile.vehiclePlate) {
+            res.status(403).json({ 
+                error: 'Incomplete Profile', 
+                message: 'You must complete your profile and vehicle details before bidding on trips.' 
+            });
+            return;
+        }
+
+        const bid = await Bid.create({
+            tripId,
+            driverId,
+            driverName: profile.fullName,
+            driverPhone: driver.phoneNumber,
+            driverRating: 4.8, // Mock rating
+            vehicleMake: profile.vehicleMake || 'Toyota',
+            vehicleModel: profile.vehicleModel || 'Vitz',
+            vehiclePlate: profile.vehiclePlate,
+            vehicleColor: profile.vehicleColor || 'White',
+            offeredFare,
+            currency: 'USD',
+            status: 'pending',
+            estimatedArrivalMins: estimatedArrivalMins || 5,
+        });
+
+        res.status(201).json({ bid });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
  * POST /trips/:id/bids/:bidId/accept
  * Passenger accepts a specific driver's bid.
  */
@@ -109,25 +161,58 @@ export const acceptBid = async (req: Request, res: Response) => {
         const bid = await Bid.findByPk(bidId);
         if (!bid) { res.status(404).json({ error: 'Bid not found' }); return; }
 
-        // Accept this bid
+        const trip = await Trip.findByPk(tripId);
+        if (!trip) { res.status(404).json({ error: 'Trip not found' }); return; }
+
+        // ─── Driver Credit Verification ─────────────────────────────────────────
+        const driver = await User.findByPk(bid.driverId);
+        if (!driver) { res.status(404).json({ error: 'Driver not found' }); return; }
+
+        const fare = Number(bid.offeredFare);
+        const SYSTEM_CHARGE_PERCENT = 0.10; // 10% system charge
+        const chargeAmount = fare * SYSTEM_CHARGE_PERCENT;
+
+        if (Number(driver.credits) < fare) {
+            res.status(403).json({ 
+                error: 'Insufficient credits', 
+                message: `You need at least $${fare.toFixed(2)} in credits to accept this ride. Current balance: $${Number(driver.credits).toFixed(2)}` 
+            });
+            return;
+        }
+
+        // ─── Process Acceptance ──────────────────────────────────────────────────
+        
+        // 1. Deduct system charge from driver
+        await driver.decrement('credits', { by: chargeAmount });
+
+        // 2. Record transaction
+        await Transaction.create({
+            userId: driver.id,
+            amount: chargeAmount,
+            type: 'deduction',
+            status: 'completed',
+            reference: `TRIP-${tripId}`,
+            metadata: JSON.stringify({ fare, chargePercent: SYSTEM_CHARGE_PERCENT })
+        });
+
+        // 3. Update bid status
         await bid.update({ status: 'accepted' });
 
-        // Reject all others for this trip
+        // 4. Reject all others for this trip
         await Bid.update({ status: 'rejected' }, { where: { tripId, status: 'pending' } });
 
-        // Update trip with accepted driver and fare
-        await Trip.update(
-            {
-                driverId: bid.driverId,
-                fare: bid.offeredFare,
-                status: 'accepted',
-            },
-            { where: { id: tripId } }
-        );
+        // 5. Update trip with accepted driver and fare
+        await trip.update({
+            driverId: bid.driverId,
+            fare: fare,
+            status: 'accepted',
+        });
 
         res.json({
             message: 'Driver accepted. Ride confirmed!',
             bid: (bid as any).dataValues ?? bid,
+            deduction: chargeAmount.toFixed(2),
+            remainingCredits: (Number(driver.credits) - chargeAmount).toFixed(2)
         });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

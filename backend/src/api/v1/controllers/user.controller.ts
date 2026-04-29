@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
 import * as userService from '../services/user.service.js';
+import { formatSequelizeError } from '../../../utils/errorHandler.js';
+import { normalizePhoneNumber } from '../../../utils/phone.js';
+import jwt from 'jsonwebtoken';
 
 /**
  * POST /users/register
@@ -7,14 +10,16 @@ import * as userService from '../services/user.service.js';
  */
 export const registerUser = async (req: Request, res: Response) => {
     try {
-        const { phoneNumber, role } = req.body;
+        const { phoneNumber: rawPhone, role, fullName } = req.body;
 
-        if (!phoneNumber) {
+        if (!rawPhone) {
             res.status(400).json({ error: 'Phone number is required' });
             return;
         }
 
-        const user = await userService.createUser(phoneNumber, role ?? 'passenger');
+        const phoneNumber = normalizePhoneNumber(rawPhone);
+
+        const user = await userService.createUser(phoneNumber, role ?? 'passenger', fullName);
 
         // Generate OTP → stored in Redis, queued via Bull (logs to console now, SMS later)
         await userService.generateAndSendOTP(phoneNumber);
@@ -27,7 +32,8 @@ export const registerUser = async (req: Request, res: Response) => {
             message: 'Registration successful. OTP sent.',
         });
     } catch (error: any) {
-        res.status(400).json({ error: error.message });
+        console.error('[UserController] Registration error:', error);
+        res.status(400).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -37,12 +43,14 @@ export const registerUser = async (req: Request, res: Response) => {
  */
 export const verifyUserOTP = async (req: Request, res: Response) => {
     try {
-        const { phoneNumber, otp } = req.body;
+        const { phoneNumber: rawPhone, otp } = req.body;
 
-        if (!phoneNumber || !otp) {
+        if (!rawPhone || !otp) {
             res.status(400).json({ error: 'Phone number and OTP are required' });
             return;
         }
+
+        const phoneNumber = normalizePhoneNumber(rawPhone);
 
         const valid = userService.verifyOTP(phoneNumber, otp);
 
@@ -51,16 +59,30 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
             return;
         }
 
-        // Find the user to return their ID
+        // Find the user to return their ID and data
         const user = await userService.findUserByPhone(phoneNumber);
+
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+
+        // Generate JWT
+        const token = jwt.sign(
+            { id: user.id, phoneNumber: user.phoneNumber, role: user.role },
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn: '7d' }
+        );
 
         res.json({
             verified: true,
-            userId: user?.id ?? user?.dataValues?.id,
+            userId: user.id,
+            token,
+            user,
             message: 'OTP verified successfully.',
         });
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -70,16 +92,18 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
  */
 export const resendOTP = async (req: Request, res: Response) => {
     try {
-        const { phoneNumber } = req.body;
-        if (!phoneNumber) {
+        const { phoneNumber: rawPhone } = req.body;
+        if (!rawPhone) {
             res.status(400).json({ error: 'Phone number is required' });
             return;
         }
 
+        const phoneNumber = normalizePhoneNumber(rawPhone);
+
         userService.generateAndSendOTP(phoneNumber);
         res.json({ message: 'New OTP generated. Check the backend console.' });
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -88,6 +112,6 @@ export const getUsers = async (req: Request, res: Response) => {
         const users = await userService.getAllUsers();
         res.json(users);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: formatSequelizeError(error) });
     }
 };

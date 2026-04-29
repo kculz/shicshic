@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import * as profileService from '../services/profile.service.js';
 import * as verificationService from '../services/verification.service.js';
+import { formatSequelizeError } from '../../../utils/errorHandler.js';
 
 export const createProfile = async (req: Request, res: Response) => {
     try {
@@ -8,7 +9,7 @@ export const createProfile = async (req: Request, res: Response) => {
         const profile = await profileService.createProfile(userId, fullName);
         res.status(201).json(profile);
     } catch (error: any) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -19,7 +20,7 @@ export const getProfile = async (req: Request, res: Response) => {
         res.json(profile);
     } catch (error: any) {
         const status = error.message === 'Profile not found' ? 404 : 500;
-        res.status(status).json({ error: error.message });
+        res.status(status).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -31,7 +32,7 @@ export const updateKYC = async (req: Request, res: Response) => {
         res.json(profile);
     } catch (error: any) {
         const status = error.message === 'Profile not found' ? 404 : 400;
-        res.status(status).json({ error: error.message });
+        res.status(status).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -39,6 +40,7 @@ export const submitVerification = async (req: Request, res: Response) => {
     try {
         const userId = req.params['userId'] as string;
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        const { vehicleMake, vehicleModel, vehiclePlate, vehicleColor } = req.body;
 
         if (!files['idCardFront']?.[0] || !files['selfie']?.[0]) {
             return res.status(400).json({ error: 'ID Card front and Selfie are required' });
@@ -49,7 +51,11 @@ export const submitVerification = async (req: Request, res: Response) => {
 
         const { profile, result } = await verificationService.processKYCUpdate(userId, {
             idCardFrontUrl,
-            selfieUrl
+            selfieUrl,
+            vehicleMake,
+            vehicleModel,
+            vehiclePlate,
+            vehicleColor
         });
 
         res.json({
@@ -58,7 +64,7 @@ export const submitVerification = async (req: Request, res: Response) => {
             verification: result
         });
     } catch (error: any) {
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: formatSequelizeError(error) });
     }
 };
 
@@ -67,6 +73,6 @@ export const getPendingProfiles = async (req: Request, res: Response) => {
         const profiles = await profileService.getProfilesByStatus('pending');
         res.json(profiles);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: formatSequelizeError(error) });
     }
 };
