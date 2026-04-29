@@ -6,7 +6,9 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { TextInput } from 'react-native';
 import apiClient from '../../api/client';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -14,13 +16,20 @@ const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
 const GREEN = '#22C55E';
 
-const steps = ['ID Card', 'Selfie', 'Review'];
+    const { user } = useAuthStore();
+    const isDriver = user?.role === 'driver';
+    const steps = isDriver ? ['ID Card', 'Selfie', 'Vehicle', 'Review'] : ['ID Card', 'Selfie', 'Review'];
 
-export default function KYCScreen() {
-    const { userId } = useLocalSearchParams<{ userId: string }>();
     const [idCardFront, setIdCardFront] = useState<string | null>(null);
     const [selfie, setSelfie] = useState<string | null>(null);
-    const [step, setStep] = useState(0); // 0=id, 1=selfie, 2=review
+    
+    // Vehicle State
+    const [vMake, setVMake] = useState('');
+    const [vModel, setVModel] = useState('');
+    const [vPlate, setVPlate] = useState('');
+    const [vColor, setVColor] = useState('');
+
+    const [step, setStep] = useState(0); 
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
@@ -41,12 +50,19 @@ export default function KYCScreen() {
         if (!result.canceled) {
             if (type === 'id') {
                 setIdCardFront(result.assets[0].uri);
-                setStep(1); // advance to selfie step
+                setStep(1); 
             } else {
                 setSelfie(result.assets[0].uri);
-                setStep(2); // advance to review step
+                setStep(isDriver ? 2 : 2); // logic below handles step index
             }
         }
+    };
+
+    const nextStep = () => {
+        if (step === 1 && isDriver) setStep(2);
+        else if (step === 1 && !isDriver) setStep(2);
+        else if (step === 2 && isDriver) setStep(3);
+        else setStep(prev => prev + 1);
     };
 
     const takeSelfie = async () => {
@@ -65,7 +81,7 @@ export default function KYCScreen() {
 
         if (!result.canceled) {
             setSelfie(result.assets[0].uri);
-            setStep(2);
+            setStep(isDriver ? 2 : 2);
         }
     };
 
@@ -94,7 +110,14 @@ export default function KYCScreen() {
                 type: 'image/jpeg',
             } as any);
 
-            const response = await apiClient.post(`/profiles/${userId}/verify`, formData, {
+            if (isDriver) {
+                formData.append('vehicleMake', vMake);
+                formData.append('vehicleModel', vModel);
+                formData.append('vehiclePlate', vPlate);
+                formData.append('vehicleColor', vColor);
+            }
+
+            const response = await apiClient.post(`/profiles/${userId || user?.id}/verify`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
 
@@ -151,8 +174,9 @@ export default function KYCScreen() {
                 {/* Progress Steps */}
                 <View style={styles.stepsRow}>
                     {steps.map((s, i) => {
-                        const done = i < step;
-                        const active = i === step;
+                        const actualStep = i;
+                        const done = actualStep < step;
+                        const active = actualStep === step;
                         return (
                             <React.Fragment key={s}>
                                 <View style={styles.stepItem}>
@@ -221,11 +245,39 @@ export default function KYCScreen() {
                                 <Text style={[styles.uploadBtnText, { color: ORANGE }]}>Gallery</Text>
                             </TouchableOpacity>
                         </View>
+                        <TouchableOpacity style={[styles.uploadBtn, { marginTop: 20, backgroundColor: DARK }]} onPress={() => setStep(isDriver ? 2 : 2)}>
+                            <Text style={styles.uploadBtnText}>Continue</Text>
+                        </TouchableOpacity>
                     </View>
                 )}
 
-                {/* Step 2 — Review */}
-                {step === 2 && (
+                {/* Step 2 — Vehicle (Driver Only) */}
+                {step === 2 && isDriver && (
+                    <View style={styles.stepContent}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Vehicle Make</Text>
+                            <TextInput style={styles.input} placeholder="e.g. Toyota" value={vMake} onChangeText={setVMake} />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Vehicle Model</Text>
+                            <TextInput style={styles.input} placeholder="e.g. Vitz" value={vModel} onChangeText={setVModel} />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Plate Number</Text>
+                            <TextInput style={styles.input} placeholder="e.g. ABC 1234" value={vPlate} onChangeText={setVPlate} autoCapitalize="characters" />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Vehicle Color</Text>
+                            <TextInput style={styles.input} placeholder="e.g. White" value={vColor} onChangeText={setVColor} />
+                        </View>
+                        <TouchableOpacity style={[styles.uploadBtn, { marginTop: 10 }]} onPress={() => setStep(3)}>
+                            <Text style={styles.uploadBtnText}>Continue to Review</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Step Review */}
+                {((step === 2 && !isDriver) || (step === 3 && isDriver)) && (
                     <View style={styles.stepContent}>
                         <Text style={styles.reviewTitle}>Review Your Documents</Text>
 
@@ -396,4 +448,7 @@ const styles = StyleSheet.create({
     submitBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
     skipBottomBtn: { alignItems: 'center', marginTop: 24 },
     skipBottomText: { color: GRAY, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
+    inputGroup: { marginBottom: 16 },
+    inputLabel: { fontSize: 13, fontWeight: '700', color: DARK, marginBottom: 6 },
+    input: { backgroundColor: '#F7F7F9', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, color: DARK, borderWidth: 1, borderColor: '#EEE' },
 });

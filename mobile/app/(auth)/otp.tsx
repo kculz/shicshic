@@ -6,6 +6,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import apiClient from '../../api/client';
+import { useAuthStore } from '../../store/useAuthStore';
+import { maskPhoneNumber } from '../../utils/phone';
 
 
 const ORANGE = '#FF6B00';
@@ -15,7 +17,8 @@ const GRAY = '#8A8FA8';
 const OTP_LENGTH = 6;
 
 export default function OTPScreen() {
-    const { phoneNumber, userId } = useLocalSearchParams<{ phoneNumber: string; userId: string }>();
+    const { phoneNumber, userId: initialUserId } = useLocalSearchParams<{ phoneNumber: string; userId: string }>();
+    const setAuth = useAuthStore(state => state.setAuth);
     const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
     const [loading, setLoading] = useState(false);
     const inputs = useRef<(TextInput | null)[]>([]);
@@ -51,12 +54,16 @@ export default function OTPScreen() {
                 otp: code,
             });
 
-            const { userId } = response.data;
+            const { userId, token, user } = response.data;
+            
+            if (token && user) {
+                setAuth(user, token);
+            }
 
             // Navigate to KYC screen with userId
             router.push({
                 pathname: '/(auth)/kyc',
-                params: { userId }
+                params: { userId: userId || initialUserId }
             });
         } catch (error: any) {
             Alert.alert('Invalid Code', error.response?.data?.error || 'Verification failed. Check the code and try again.');
@@ -77,9 +84,7 @@ export default function OTPScreen() {
     };
 
 
-    const maskedPhone = phoneNumber
-        ? phoneNumber.slice(0, -4).replace(/./g, '•') + phoneNumber.slice(-4)
-        : '•••• ••• ••••';
+    const maskedPhone = maskPhoneNumber(phoneNumber);
 
     return (
         <KeyboardAvoidingView

@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import apiClient from '../../api/client';
+import { normalizePhoneNumber } from '../../utils/phone';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -24,11 +25,17 @@ export default function LoginScreen() {
         }
         setLoading(true);
         try {
-            // For prototype: check if user exists then go to OTP
-            await new Promise(r => setTimeout(r, 800)); // simulate network
+            const normalizedPhone = normalizePhoneNumber(phoneNumber);
+            const response = await apiClient.post('/users/register', {
+                phoneNumber: normalizedPhone,
+                role: 'passenger', // Default role if new, existing role if user exists
+            });
+
+            const user = response.data;
+            
             router.push({
                 pathname: '/(auth)/otp',
-                params: { phoneNumber }
+                params: { phoneNumber: normalizedPhone, userId: user.id }
             });
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.error || 'Login failed. Please try again.');

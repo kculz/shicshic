@@ -6,6 +6,8 @@ import {
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import apiClient from '../../api/client';
+import { normalizePhoneNumber } from '../../utils/phone';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -28,21 +30,23 @@ const ROLES = [
 ];
 
 export default function RegisterScreen() {
+    const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [role, setRole] = useState<'passenger' | 'driver'>('passenger');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
-    const handleRegister = async () => {
-        if (!phoneNumber.trim()) {
-            Alert.alert('Required', 'Please enter your phone number');
+        if (!fullName.trim() || !phoneNumber.trim()) {
+            Alert.alert('Required', 'Please enter your full name and phone number');
             return;
         }
 
         setLoading(true);
         try {
+            const normalizedPhone = normalizePhoneNumber(phoneNumber);
             const response = await apiClient.post('/users/register', {
-                phoneNumber: `+263${phoneNumber.replace(/^0/, '')}`,
+                fullName: fullName.trim(),
+                phoneNumber: normalizedPhone,
                 role,
             });
 
@@ -51,7 +55,7 @@ export default function RegisterScreen() {
             // Go to OTP verification → then KYC
             router.push({
                 pathname: '/(auth)/otp',
-                params: { phoneNumber, userId: user.id }
+                params: { phoneNumber: normalizedPhone, userId: user.id }
             });
         } catch (error: any) {
             Alert.alert('Error', error.response?.data?.error || 'Registration failed. Please try again.');
@@ -107,6 +111,19 @@ export default function RegisterScreen() {
                             </TouchableOpacity>
                         );
                     })}
+                </View>
+ 
+                {/* Name */}
+                <Text style={styles.label}>Full Name</Text>
+                <View style={styles.inputRow}>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="e.g. John Moyo"
+                        value={fullName}
+                        onChangeText={setFullName}
+                        placeholderTextColor={GRAY}
+                        autoCapitalize="words"
+                    />
                 </View>
 
                 {/* Phone */}
