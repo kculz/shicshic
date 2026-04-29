@@ -9,6 +9,9 @@ import * as Location from 'expo-location';
 import ApiClient from '../../api/client';
 import LeafletMap from '../../components/LeafletMap';
 import FareOfferModal from '../../components/FareOfferModal';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useTripStore } from '../../store/useTripStore';
+import DriverBidModal from '../../components/DriverBidModal';
 
 
 const ORANGE = '#FF6B00';
@@ -16,7 +19,7 @@ const ORANGE_LIGHT = '#FFF3EA';
 const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
 
-const MOCK_USER = { name: 'John', kycStatus: 'pending' };
+// MOCK_USER removed, using useAuthStore instead
 
 const SERVICES = [
   { icon: 'car', label: 'Ride', desc: 'Book a ride', color: '#FF6B00', bg: '#FFF3EA' },
@@ -43,6 +46,10 @@ const greeting = () => {
 };
 
 export default function HomeScreen() {
+  const { user } = useAuthStore();
+  const { availableTrips, fetchAvailableTrips, loading: tripsLoading } = useTripStore();
+  const isDriver = user?.role === 'driver';
+
   const [selectedService, setSelectedService] = useState(0);
   const [loading, setLoading] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -62,6 +69,9 @@ export default function HomeScreen() {
   const [destLat, setDestLat] = useState<number | null>(null);
   const [destLon, setDestLon] = useState<number | null>(null);
   const [destName, setDestName] = useState('');
+  const [bidModalOpen, setBidModalOpen] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<any>(null);
+  const [activeTrip, setActiveTrip] = useState<any>(null);
 
   const searchRef = useRef<TextInput>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -129,9 +139,14 @@ export default function HomeScreen() {
       const passengerId = '5fcc714f-3064-45a5-8b2b-2d096e26a45a'; // Valid ID from DB
       const res = await ApiClient.post('/trips/request', {
         passengerId,
-        pickupLocation: `${userLat},${userLon}`,
+        pickupLocation: 'My Current Location',
         destinationLocation: destName,
+        pickupLat: userLat,
+        pickupLon: userLon,
+        destLat,
+        destLon,
         isShared: selectedService === 1,
+        seatsRequested: 1,
       });
 
       setTripId(res.data.trip.id);
@@ -154,6 +169,119 @@ export default function HomeScreen() {
     });
   };
 
+  // Fetch available trips for driver
+  useEffect(() => {
+    let interval: any;
+    if (isDriver) {
+      fetchAvailableTrips();
+      interval = setInterval(fetchAvailableTrips, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [isDriver]);
+
+  // Poll for active trip status if we have one
+  useEffect(() => {
+    let interval: any;
+    if (activeTrip && activeTrip.status !== 'completed' && activeTrip.status !== 'cancelled') {
+        interval = setInterval(async () => {
+            try {
+                const res = await ApiClient.get(`/trips/${activeTrip.id}`);
+                setActiveTrip(res.data);
+                if (res.data.status === 'accepted') {
+                    // If just accepted, maybe play a sound or show a notification
+                }
+            } catch (e) {
+                console.error('Status poll failed', e);
+            }
+        }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [activeTrip?.id]);
+
+  const handleBidOnTrip = (trip: any) => {
+    setSelectedTrip(trip);
+    setBidModalOpen(true);
+  };
+
+  if (isDriver) {
+    return (
+      <View style={styles.root}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.greeting}>{greeting()}, {user?.fullName || 'Driver'} 🚗</Text>
+              <Text style={styles.subGreeting}>You are online and ready for trips</Text>
+            </View>
+            <TouchableOpacity style={styles.notifBtn}>
+              <MaterialCommunityIcons name="bell-outline" size={22} color={DARK} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.driverStats}>
+            <View style={styles.driverStatItem}>
+              <Text style={styles.driverStatValue}>0</Text>
+              <Text style={styles.driverStatLabel}>Today's Trips</Text>
+            </View>
+            <View style={styles.driverStatItem}>
+              <Text style={styles.driverStatValue}>$0.00</Text>
+              <Text style={styles.driverStatLabel}>Earnings</Text>
+            </View>
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Available Requests</Text>
+            <TouchableOpacity onPress={fetchAvailableTrips}>
+              <MaterialCommunityIcons name="refresh" size={20} color={ORANGE} />
+            </TouchableOpacity>
+          </View>
+
+          {tripsLoading ? (
+            <ActivityIndicator size="large" color={ORANGE} style={{ marginTop: 40 }} />
+          ) : availableTrips.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <MaterialCommunityIcons name="car-search" size={48} color="#DDD" />
+              <Text style={styles.emptyText}>No active requests in your area</Text>
+              <TouchableOpacity style={styles.refreshBtn} onPress={fetchAvailableTrips}>
+                <Text style={styles.refreshBtnText}>Check Again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            availableTrips.map((trip) => (
+              <TouchableOpacity key={trip.id} style={styles.tripCard} activeOpacity={0.9}>
+                <View style={styles.tripCardHeader}>
+                  <Text style={styles.tripStatusPill}>NEW REQUEST</Text>
+                  <Text style={styles.tripTime}>Just now</Text>
+                </View>
+                <View style={styles.tripPath}>
+                  <View style={styles.pathIndicator}>
+                    <View style={styles.dotOrange} />
+                    <View style={styles.pathLine} />
+                    <MaterialCommunityIcons name="map-marker" size={16} color={ORANGE} />
+                  </View>
+                  <View style={styles.pathText}>
+                    <Text style={styles.pathLabel} numberOfLines={1}>{trip.pickupLocation}</Text>
+                    <Text style={styles.pathLabel} numberOfLines={1}>{trip.destinationLocation}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.acceptBtn} onPress={() => handleBidOnTrip(trip)}>
+                  <Text style={styles.acceptBtnText}>Bid on this Trip</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))
+          )}
+
+          <DriverBidModal
+            visible={bidModalOpen}
+            trip={selectedTrip}
+            onClose={() => setBidModalOpen(false)}
+            onBidPlaced={() => fetchAvailableTrips()}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
 
   return (
     <View style={styles.root}>
@@ -165,7 +293,7 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>{greeting()}, {MOCK_USER.name} 👋</Text>
+            <Text style={styles.greeting}>{greeting()}, {user?.fullName || 'User'} 👋</Text>
             <Text style={styles.subGreeting}>Where are you heading?</Text>
           </View>
           <TouchableOpacity style={styles.notifBtn}>
@@ -174,7 +302,7 @@ export default function HomeScreen() {
         </View>
 
         {/* KYC Banner */}
-        {MOCK_USER.kycStatus !== 'approved' && (
+        {user?.kycStatus !== 'approved' && (
           <TouchableOpacity style={styles.kycAlert} onPress={() => router.push('/(auth)/kyc')} activeOpacity={0.85}>
             <MaterialCommunityIcons name="shield-alert-outline" size={18} color={ORANGE} />
             <Text style={styles.kycAlertText}>Complete identity verification to book rides</Text>
@@ -415,4 +543,24 @@ const styles = StyleSheet.create({
   bookDestText: { flex: 1, fontSize: 14, fontWeight: '600', color: DARK },
   bookBtn: { backgroundColor: ORANGE, paddingHorizontal: 20, paddingVertical: 13, borderRadius: 12, minWidth: 110, alignItems: 'center', shadowColor: ORANGE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
   bookBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+
+  // Driver Interface Styles
+  driverStats: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  driverStatItem: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  driverStatValue: { fontSize: 20, fontWeight: '800', color: DARK },
+  driverStatLabel: { fontSize: 12, color: GRAY, marginTop: 2 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  refreshBtn: { marginTop: 16, backgroundColor: ORANGE_LIGHT, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  refreshBtnText: { color: ORANGE, fontWeight: '700', fontSize: 13 },
+  tripCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  tripCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  tripStatusPill: { backgroundColor: '#F0FDF4', color: '#16A34A', fontSize: 10, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  tripTime: { fontSize: 11, color: GRAY },
+  tripPath: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  pathIndicator: { alignItems: 'center', width: 20 },
+  pathLine: { width: 2, flex: 1, backgroundColor: '#F0F0F0', marginVertical: 4 },
+  pathText: { flex: 1, gap: 12 },
+  pathLabel: { fontSize: 14, fontWeight: '600', color: DARK },
+  acceptBtn: { backgroundColor: DARK, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  acceptBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

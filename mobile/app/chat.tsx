@@ -7,14 +7,12 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import apiClient from '../api/client';
+import { useAuthStore } from '../store/useAuthStore';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
 const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
-
-const MOCK_PASSENGER_ID = 'b91f4b80-60a6-4c40-9a29-0ec69348cafc';
-const MOCK_PASSENGER_NAME = 'John';
 
 interface Message {
     id: string;
@@ -26,8 +24,19 @@ interface Message {
 }
 
 export default function ChatScreen() {
-    const { tripId, driverName, driverPhone, vehicleMake, vehiclePlate, fare, destName } =
-        useLocalSearchParams<{ tripId: string; driverName: string; driverPhone: string; vehicleMake: string; vehiclePlate: string; fare: string; destName: string }>();
+    const { user } = useAuthStore();
+    const { tripId, driverName, driverPhone, vehicleMake, vehicleModel, vehiclePlate, vehicleColor, fare, destName } =
+        useLocalSearchParams<{ 
+            tripId: string; 
+            driverName: string; 
+            driverPhone: string; 
+            vehicleMake: string; 
+            vehicleModel?: string;
+            vehiclePlate: string; 
+            vehicleColor?: string;
+            fare: string; 
+            destName: string 
+        }>();
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [text, setText] = useState('');
@@ -56,9 +65,9 @@ export default function ChatScreen() {
         setSending(true);
         try {
             await apiClient.post(`/trips/${tripId}/messages`, {
-                senderId: MOCK_PASSENGER_ID,
-                senderRole: 'passenger',
-                senderName: MOCK_PASSENGER_NAME,
+                senderId: user?.id,
+                senderRole: user?.role,
+                senderName: user?.fullName || 'User',
                 message: trimmed,
             });
             loadMessages();
@@ -96,7 +105,7 @@ export default function ChatScreen() {
     useEffect(scrollToEnd, [messages.length]);
 
     const renderMessage = ({ item }: { item: Message }) => {
-        const isMe = item.senderRole === 'passenger';
+        const isMe = item.senderId === user?.id;
         return (
             <View style={[styles.msgRow, isMe ? styles.msgRowRight : styles.msgRowLeft]}>
                 {!isMe && (
@@ -135,7 +144,7 @@ export default function ChatScreen() {
                     </View>
                     <View>
                         <Text style={styles.driverName}>{driverName}</Text>
-                        <Text style={styles.vehicleText}>{vehicleMake} · {vehiclePlate}</Text>
+                        <Text style={styles.vehicleText}>{vehicleColor} {vehicleMake} {vehicleModel} · {vehiclePlate}</Text>
                     </View>
                 </View>
 

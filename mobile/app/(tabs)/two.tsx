@@ -3,6 +3,8 @@ import { StyleSheet, TouchableOpacity, ScrollView, Image, View, StatusBar, Alert
 import { useRouter } from 'expo-router';
 import { Text } from '@/components/Themed';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuthStore } from '../../store/useAuthStore';
+import { formatPhoneDisplay } from '../../utils/phone';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -10,15 +12,7 @@ const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
 const GREEN = '#22C55E';
 
-// For prototype use a hardcoded mock; real app would read from auth store
-const MOCK_USER = {
-  id: 'b91f4b80-60a6-4c40-9a29-0ec69348cafc',
-  name: 'John Doe',
-  phone: '+263 77 123 4567',
-  role: 'passenger' as 'passenger' | 'driver',
-  kycStatus: 'pending' as 'pending' | 'approved' | 'rejected',
-  initials: 'JD',
-};
+// MOCK_USER removed, using useAuthStore instead
 
 type MenuItem = {
   icon: string;
@@ -31,13 +25,20 @@ type MenuItem = {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { user, logout } = useAuthStore();
 
-  const kycDone = MOCK_USER.kycStatus === 'approved';
+  const kycDone = false; // This would come from user profile in a real app
+  const displayName = user?.fullName || 'User';
+  const displayPhone = user?.phoneNumber ? formatPhoneDisplay(user.phoneNumber) : 'No phone';
+  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => router.replace('/(auth)/login') }
+      { text: 'Log Out', style: 'destructive', onPress: () => {
+        logout();
+        router.replace('/(auth)/login');
+      }}
     ]);
   };
 
@@ -47,12 +48,18 @@ export default function ProfileScreen() {
       label: 'Complete Identity Verification',
       desc: 'Unlock all features by verifying your ID',
       badge: 'Required',
-      action: () => router.push({ pathname: '/(auth)/kyc', params: { userId: MOCK_USER.id } }),
+      action: () => router.push({ pathname: '/(auth)/kyc', params: { userId: user?.id } }),
     }] : []),
+    {
+      icon: 'wallet-outline',
+      label: 'My Wallet',
+      desc: 'Credits, Top-ups & Transactions',
+      action: () => router.push('/wallet'),
+    },
     {
       icon: 'account-edit-outline',
       label: 'Edit Profile',
-      desc: 'Update your name and details',
+      desc: 'Change your name, email and avatar',
       action: () => Alert.alert('Coming Soon', 'Profile editing coming soon.'),
     },
     {
@@ -89,7 +96,7 @@ export default function ProfileScreen() {
           {/* Avatar */}
           <View style={styles.avatarWrap}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{MOCK_USER.initials}</Text>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
             {kycDone && (
               <View style={styles.verifiedBadge}>
@@ -98,17 +105,17 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <Text style={styles.heroName}>{MOCK_USER.name}</Text>
-          <Text style={styles.heroPhone}>{MOCK_USER.phone}</Text>
+          <Text style={styles.heroName}>{displayName}</Text>
+          <Text style={styles.heroPhone}>{displayPhone}</Text>
 
           {/* Role pill */}
           <View style={styles.rolePill}>
             <MaterialCommunityIcons
-              name={MOCK_USER.role === 'driver' ? 'steering' : 'account-outline'}
+              name={user?.role === 'driver' ? 'steering' : 'account-outline'}
               size={14} color={ORANGE}
             />
             <Text style={styles.rolePillText}>
-              {MOCK_USER.role === 'driver' ? 'Driver' : 'Passenger'}
+              {user?.role === 'driver' ? 'Driver' : 'Passenger'}
             </Text>
           </View>
         </View>
@@ -117,7 +124,7 @@ export default function ProfileScreen() {
         {!kycDone ? (
           <TouchableOpacity
             style={styles.kycBanner}
-            onPress={() => router.push({ pathname: '/(auth)/kyc', params: { userId: MOCK_USER.id } })}
+            onPress={() => router.push({ pathname: '/(auth)/kyc', params: { userId: user?.id } })}
             activeOpacity={0.88}
           >
             <View style={styles.kycBannerLeft}>

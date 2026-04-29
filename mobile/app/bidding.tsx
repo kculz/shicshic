@@ -19,7 +19,9 @@ interface Bid {
     driverPhone: string;
     driverRating: number;
     vehicleMake: string;
+    vehicleModel?: string;
     vehiclePlate: string;
+    vehicleColor?: string;
     offeredFare: number;
     currency: string;
     estimatedArrivalMins: number;
@@ -93,7 +95,9 @@ export default function BiddingScreen() {
                     driverName: bid.driverName,
                     driverPhone: bid.driverPhone,
                     vehicleMake: bid.vehicleMake,
+                    vehicleModel: bid.vehicleModel || '',
                     vehiclePlate: bid.vehiclePlate,
+                    vehicleColor: bid.vehicleColor || '',
                     fare: String(bid.offeredFare),
                     destName,
                 },
@@ -129,7 +133,9 @@ export default function BiddingScreen() {
                 <View style={{ flex: 1 }}>
                     <Text style={styles.driverName}>{item.driverName}</Text>
                     <Stars rating={item.driverRating} />
-                    <Text style={styles.vehicle}>{item.vehicleMake} · {item.vehiclePlate}</Text>
+                    <Text style={styles.vehicle}>
+                        {item.vehicleColor} {item.vehicleMake} {item.vehicleModel} · <Text style={{ color: DARK, fontWeight: '700' }}>{item.vehiclePlate}</Text>
+                    </Text>
                 </View>
                 <View style={styles.fareCol}>
                     <Text style={styles.driverFare}>${item.offeredFare}</Text>
