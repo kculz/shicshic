@@ -60,7 +60,13 @@ export default function OTPScreen() {
                 setAuth(user, token);
             }
 
-            // Navigate to KYC screen with userId
+            // If user is already verified, go to tabs (dashboard)
+            if (user?.isVerified) {
+                router.replace('/(tabs)');
+                return;
+            }
+
+            // Otherwise, navigate to KYC screen
             router.push({
                 pathname: '/(auth)/kyc',
                 params: { userId: userId || initialUserId }

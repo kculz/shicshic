@@ -35,7 +35,7 @@ export default function RegisterScreen() {
     const [role, setRole] = useState<'passenger' | 'driver'>('passenger');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
-
+    const handleRegister = async () => {
         if (!fullName.trim() || !phoneNumber.trim()) {
             Alert.alert('Required', 'Please enter your full name and phone number');
             return;

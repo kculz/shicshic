@@ -16,6 +16,8 @@ const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
 const GREEN = '#22C55E';
 
+export default function KYCScreen() {
+    const { userId } = useLocalSearchParams<{ userId: string }>();
     const { user } = useAuthStore();
     const isDriver = user?.role === 'driver';
     const steps = isDriver ? ['ID Card', 'Selfie', 'Vehicle', 'Review'] : ['ID Card', 'Selfie', 'Review'];

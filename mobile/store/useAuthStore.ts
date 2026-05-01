@@ -9,6 +9,8 @@ interface User {
     role: 'passenger' | 'driver' | 'admin';
     fullName?: string;
     avatar?: string;
+    isVerified?: boolean;
+    kycStatus?: 'pending' | 'approved' | 'rejected' | 'not_started';
 }
 
 interface AuthState {
