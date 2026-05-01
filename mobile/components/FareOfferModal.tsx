@@ -46,7 +46,7 @@ export default function FareOfferModal({ visible, tripId, destName, distanceKm, 
         }
         setLoading(true);
         try {
-            await apiClient.post(`/trips/${tripId}/bids/simulate`, { passengerFare: fareNum });
+            // No longer simulating dummy bids. Bids will come from real drivers in the area.
             onBidsReady(tripId, fareNum);
         } catch (e: any) {
             Alert.alert('Error', e.response?.data?.error || 'Could not find drivers');

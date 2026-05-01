@@ -34,10 +34,15 @@ export const useTripStore = create<TripState>((set) => ({
     updateTripStatus: (status) => set((state) => ({
         currentTrip: state.currentTrip ? { ...state.currentTrip, status } : null
     })),
-    fetchAvailableTrips: async () => {
+    fetchAvailableTrips: async (lat?: number, lon?: number, driverId?: string) => {
         set({ loading: true });
         try {
-            const res = await ApiClient.get('/trips/available');
+            const params = new URLSearchParams();
+            if (lat) params.append('lat', String(lat));
+            if (lon) params.append('lon', String(lon));
+            if (driverId) params.append('driverId', driverId);
+
+            const res = await ApiClient.get(`/trips/available?${params.toString()}`);
             set({ availableTrips: res.data });
         } catch (error) {
             console.error('[TripStore] Fetch failed:', error);

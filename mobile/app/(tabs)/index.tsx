@@ -110,6 +110,18 @@ export default function HomeScreen() {
     }, 400);
   }, []);
 
+  // Sync user profile for KYC status
+  useEffect(() => {
+    if (user?.id) {
+      ApiClient.get(`/profiles/${user.id}`).then(res => {
+        useAuthStore.getState().updateUser({ 
+          kycStatus: res.data.kycStatus,
+          isVerified: res.data.kycStatus === 'approved'
+        });
+      }).catch(e => console.error('Failed to sync profile', e));
+    }
+  }, [user?.id]);
+
   const selectSuggestion = (s: Suggestion) => {
     setDestLat(parseFloat(s.lat));
     setDestLon(parseFloat(s.lon));
@@ -136,9 +148,9 @@ export default function HomeScreen() {
       const d = Math.sqrt(Math.pow(destLat - userLat, 2) + Math.pow(destLon - userLon, 2)) * 111;
       setDistanceKm(d || 5);
 
-      const passengerId = '5fcc714f-3064-45a5-8b2b-2d096e26a45a'; // Valid ID from DB
+      const passengerId = user?.id;
       const res = await ApiClient.post('/trips/request', {
-        passengerId,
+          passengerId,
         pickupLocation: 'My Current Location',
         destinationLocation: destName,
         pickupLat: userLat,
@@ -172,12 +184,20 @@ export default function HomeScreen() {
   // Fetch available trips for driver
   useEffect(() => {
     let interval: any;
+    const callFetch = () => {
+        if (userLat && userLon) {
+            fetchAvailableTrips(userLat, userLon, user?.id);
+        } else {
+            fetchAvailableTrips();
+        }
+    };
+
     if (isDriver) {
-      fetchAvailableTrips();
-      interval = setInterval(fetchAvailableTrips, 5000);
+      callFetch();
+      interval = setInterval(callFetch, 5000);
     }
     return () => clearInterval(interval);
-  }, [isDriver]);
+  }, [isDriver, userLat, userLon, user?.id]);
 
   // Poll for active trip status if we have one
   useEffect(() => {
@@ -228,6 +248,31 @@ export default function HomeScreen() {
               <Text style={styles.driverStatLabel}>Earnings</Text>
             </View>
           </View>
+
+          {/* Verification Status Banner */}
+          {!user?.isVerified && user?.kycStatus === 'pending' && (
+            <View style={styles.pendingBanner}>
+                <MaterialCommunityIcons name="clock-outline" size={20} color="#8B4500" />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.pendingTitle}>Documents Under Review</Text>
+                    <Text style={styles.pendingDesc}>Your submission is being reviewed. This usually takes less than 24 hours.</Text>
+                </View>
+            </View>
+          )}
+
+          {!user?.isVerified && (user?.kycStatus === 'not_started' || !user?.kycStatus) && (
+            <TouchableOpacity 
+                style={styles.pendingBanner} 
+                onPress={() => router.push({ pathname: '/(auth)/kyc', params: { userId: user?.id } })}
+            >
+                <MaterialCommunityIcons name="shield-alert-outline" size={20} color="#8B4500" />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.pendingTitle}>Action Required: Complete KYC</Text>
+                    <Text style={styles.pendingDesc}>Please upload your ID and vehicle details to start accepting rides.</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color="#8B4500" />
+            </TouchableOpacity>
+          )}
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Available Requests</Text>
@@ -563,4 +608,18 @@ const styles = StyleSheet.create({
   pathLabel: { fontSize: 14, fontWeight: '600', color: DARK },
   acceptBtn: { backgroundColor: DARK, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   acceptBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  pendingBanner: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12, 
+    backgroundColor: '#FFFBEB', 
+    borderRadius: 14, 
+    padding: 14, 
+    marginBottom: 16, 
+    borderWidth: 1, 
+    borderColor: '#FEF3C7' 
+  },
+  pendingTitle: { fontSize: 13, fontWeight: '700', color: '#8B4500', marginBottom: 2 },
+  pendingDesc: { fontSize: 11, color: '#92400E', lineHeight: 16 },
 });
