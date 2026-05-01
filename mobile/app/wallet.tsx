@@ -7,6 +7,7 @@ import { Text } from '@/components/Themed';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
 import ApiClient from '../api/client';
+import { useAuthStore } from '../store/useAuthStore';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -21,13 +22,20 @@ export default function WalletScreen() {
     const [processing, setProcessing] = useState(false);
     const router = useRouter();
 
-    const userId = 'b91f4b80-60a6-4c40-9a29-0ec69348cafc'; // Mock current user ID
+    const { user } = useAuthStore();
+    const userId = user?.id;
 
     useEffect(() => {
+        if (user && user.role !== 'driver') {
+            Alert.alert('Access Restricted', 'The wallet is only available for driver credit management.');
+            router.back();
+            return;
+        }
         fetchBalance();
-    }, []);
+    }, [user]);
 
     const fetchBalance = async () => {
+        if (!userId) return;
         try {
             const res = await ApiClient.get(`/payments/balance/${userId}`);
             setBalance(Number(res.data.credits));
@@ -49,7 +57,7 @@ export default function WalletScreen() {
             const res = await ApiClient.post('/payments/topup', {
                 userId,
                 amount: parseFloat(topupAmount),
-                phoneNumber: '0771234567' // In real app, get from user profile
+                phoneNumber: user?.phoneNumber || '0771234567' 
             });
 
             Alert.alert(
@@ -136,10 +144,11 @@ export default function WalletScreen() {
 
                 {/* Info Box */}
                 <View style={styles.infoBox}>
-                    <MaterialCommunityIcons name="information-outline" size={20} color={GRAY} />
+                    <MaterialCommunityIcons name="information-outline" size={20} color={'#4338CA'} />
                     <Text style={styles.infoText}>
-                        System charges (10%) are deducted from your credits upon ride acceptance. 
-                        Ensure your balance is higher than the ride fare to accept.
+                        <Text style={{ fontWeight: '700' }}>Platform Credits:</Text> These are used for accepting rides and system commissions. Trip fares are paid to you directly by passengers in cash.
+                        {'\n\n'}
+                        A 10% system charge is deducted from these credits upon ride acceptance.
                     </Text>
                 </View>
 

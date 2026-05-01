@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
 
-  const kycDone = false; // This would come from user profile in a real app
+  const kycDone = user?.isVerified; 
   const displayName = user?.fullName || 'User';
   const displayPhone = user?.phoneNumber ? formatPhoneDisplay(user.phoneNumber) : 'No phone';
   const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -50,17 +50,17 @@ export default function ProfileScreen() {
       badge: 'Required',
       action: () => router.push({ pathname: '/(auth)/kyc', params: { userId: user?.id } }),
     }] : []),
-    {
+    ...(user?.role === 'driver' ? [{
       icon: 'wallet-outline',
       label: 'My Wallet',
       desc: 'Credits, Top-ups & Transactions',
       action: () => router.push('/wallet'),
-    },
+    }] : []),
     {
       icon: 'account-edit-outline',
       label: 'Edit Profile',
-      desc: 'Change your name, email and avatar',
-      action: () => Alert.alert('Coming Soon', 'Profile editing coming soon.'),
+      desc: 'Change your name, vehicle and details',
+      action: () => router.push('/profile'),
     },
     {
       icon: 'bell-outline',
@@ -121,7 +121,17 @@ export default function ProfileScreen() {
         </View>
 
         {/* KYC Status Banner */}
-        {!kycDone ? (
+        {user?.kycStatus === 'pending' ? (
+          <View style={[styles.kycBanner, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
+            <View style={styles.kycBannerLeft}>
+              <MaterialCommunityIcons name="clock-outline" size={28} color="#D97706" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.kycBannerTitle, { color: '#92400E' }]}>Waiting for review</Text>
+                <Text style={[styles.kycBannerDesc, { color: '#B45309' }]}>Documents submitted. Review takes 24 hrs tops.</Text>
+              </View>
+            </View>
+          </View>
+        ) : !kycDone ? (
           <TouchableOpacity
             style={styles.kycBanner}
             onPress={() => router.push({ pathname: '/(auth)/kyc', params: { userId: user?.id } })}
