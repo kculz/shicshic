@@ -1,6 +1,6 @@
 import User from '../../../database/models/User.js';
 import Profile from '../../../database/models/Profile.js';
-import { otpQueue, storeOtpInRedis, getAndConsumeOtp } from '../../../queues/otp.queue.js';
+import { otpQueue, storeOtpInRedis, verifyAndConsumeOtp } from '../../../queues/otp.queue.js';
 
 /**
  * Generates a 6-digit OTP, stores it in Redis (via Bull),
@@ -31,9 +31,7 @@ export const generateAndSendOTP = async (phoneNumber: string): Promise<string> =
  * Returns true if the OTP is correct and not expired.
  */
 export const verifyOTP = async (phoneNumber: string, otp: string): Promise<boolean> => {
-    const stored = await getAndConsumeOtp(phoneNumber);
-    if (!stored) return false;
-    return stored === otp;
+    return await verifyAndConsumeOtp(phoneNumber, otp);
 };
 
 export const createUser = async (phoneNumber: string, role: 'passenger' | 'driver', fullName?: string) => {

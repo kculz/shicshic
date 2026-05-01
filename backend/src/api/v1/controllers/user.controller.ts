@@ -52,7 +52,7 @@ export const verifyUserOTP = async (req: Request, res: Response) => {
 
         const phoneNumber = normalizePhoneNumber(rawPhone);
 
-        const valid = userService.verifyOTP(phoneNumber, otp);
+        const valid = await userService.verifyOTP(phoneNumber, otp);
 
         if (!valid) {
             res.status(401).json({ error: 'Invalid or expired OTP. Please request a new code.' });
@@ -100,7 +100,7 @@ export const resendOTP = async (req: Request, res: Response) => {
 
         const phoneNumber = normalizePhoneNumber(rawPhone);
 
-        userService.generateAndSendOTP(phoneNumber);
+        await userService.generateAndSendOTP(phoneNumber);
         res.json({ message: 'New OTP generated. Check the backend console.' });
     } catch (error: any) {
         res.status(500).json({ error: formatSequelizeError(error) });

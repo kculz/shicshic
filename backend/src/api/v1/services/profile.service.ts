@@ -23,3 +23,19 @@ export const updateProfileKYC = async (userId: string, data: { idCardFrontUrl?: 
 export const getProfilesByStatus = async (status: 'pending' | 'approved' | 'rejected') => {
     return await Profile.findAll({ where: { kycStatus: status } });
 };
+
+export const updateProfileData = async (userId: string, data: any) => {
+    const profile = await Profile.findOne({ where: { userId } });
+    if (!profile) throw new Error('Profile not found');
+
+    // Protect certain fields or add logic here
+    const { fullName, vehicleMake, vehicleModel, vehiclePlate, vehicleColor } = data;
+    
+    return await profile.update({
+        fullName,
+        vehicleMake,
+        vehicleModel,
+        vehiclePlate,
+        vehicleColor
+    });
+};

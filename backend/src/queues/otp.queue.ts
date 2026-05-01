@@ -78,24 +78,38 @@ export const storeOtpInRedis = async (phoneNumber: string, otp: string): Promise
 };
 
 /**
- * Retrieve and invalidate an OTP from Redis.
- * Returns the OTP string if valid, null if expired/not found.
+ * Verifies and invalidates an OTP from Redis.
+ * Returns true if valid and matching, false otherwise.
  */
-export const getAndConsumeOtp = async (phoneNumber: string): Promise<string | null> => {
-    const job = await otpStoreQueue.getJob(`otp:${phoneNumber}`);
+export const verifyAndConsumeOtp = async (phoneNumber: string, otp: string): Promise<boolean> => {
+    const jobId = `otp:${phoneNumber}`;
+    const job = await otpStoreQueue.getJob(jobId);
 
-    if (!job) return null;
+    if (!job) {
+        console.log(`[OTP Store] No job found for ID: ${jobId}`);
+        return false;
+    }
 
     // Check if expired (10 minutes)
     const ageMs = Date.now() - job.timestamp;
     if (ageMs > 10 * 60 * 1000) {
+        console.log(`[OTP Store] OTP for ${phoneNumber} expired (${ageMs}ms old)`);
         await job.remove();
-        return null;
+        return false;
     }
 
-    const { otp } = job.data;
-    await job.remove(); // one-time use
-    return otp;
+    const { otp: storedOtp } = job.data;
+    
+    console.log(`[OTP Store] Verifying ${phoneNumber}: provided [${otp}], stored [${storedOtp}]`);
+
+    if (storedOtp === otp) {
+        await job.remove(); // Success! Consume it.
+        console.log(`[OTP Store] SUCCESS for ${phoneNumber}`);
+        return true;
+    }
+
+    console.log(`[OTP Store] MISMATCH for ${phoneNumber}`);
+    return false; // Wrong code, but keep it for retry
 };
 
 // ─── OTP Queue Processor ──────────────────────────────────────────────────────

@@ -115,7 +115,29 @@ export const updateTripStatus = async (id: string, status: Trip['status']) => {
     return await trip.update({ status });
 };
 
-export const getAvailableTrips = async () => {
-    // For shared trips, we might want to return them grouped or unique per pool
-    return await Trip.findAll({ where: { status: 'requested' } });
+export const getAvailableTrips = async (driverLat?: number, driverLon?: number, radiusKm: number = 5) => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    
+    const trips = await Trip.findAll({ 
+        where: { 
+            status: 'requested',
+            createdAt: { [Op.gt]: oneHourAgo }
+        },
+        order: [['createdAt', 'DESC']]
+    });
+
+    if (driverLat !== undefined && driverLon !== undefined) {
+        // Filter by distance
+        return trips.filter(trip => {
+            const dist = getDistance(
+                driverLat, 
+                driverLon, 
+                Number(trip.pickupLat), 
+                Number(trip.pickupLon)
+            );
+            return dist <= radiusKm;
+        });
+    }
+
+    return trips;
 };

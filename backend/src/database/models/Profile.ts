@@ -16,6 +16,7 @@ interface ProfileAttributes {
     vehiclePlate?: string | null;
     vehicleColor?: string | null;
     rejectionReason?: string | null;
+    searchRadius: number;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -35,6 +36,7 @@ class Profile extends Model<ProfileAttributes, ProfileCreationAttributes> implem
     declare vehiclePlate?: string | null;
     declare vehicleColor?: string | null;
     declare rejectionReason?: string | null;
+    declare searchRadius: number;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -95,6 +97,11 @@ Profile.init(
         vehicleColor: {
             type: DataTypes.STRING,
             allowNull: true,
+        },
+        searchRadius: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 5, // 5km default
         },
     },
     {

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createProfile, getProfile, updateKYC, submitVerification, getPendingProfiles } from '../controllers/profile.controller.js';
+import { createProfile, getProfile, updateKYC, submitVerification, getPendingProfiles, updateProfile } from '../controllers/profile.controller.js';
 import { upload } from '../../../middleware/upload.middleware.js';
 
 const router = Router();
@@ -7,6 +7,7 @@ const router = Router();
 router.post('/', createProfile);
 router.get('/pending', getPendingProfiles); // Admin route
 router.get('/:userId', getProfile);
+router.put('/:userId', updateProfile);
 router.put('/:userId/kyc', updateKYC);
 router.post('/:userId/verify', upload.fields([
     { name: 'idCardFront', maxCount: 1 },

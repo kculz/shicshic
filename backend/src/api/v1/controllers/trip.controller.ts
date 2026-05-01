@@ -74,7 +74,19 @@ export const acceptTrip = async (req: Request, res: Response) => {
 
 export const listAvailableTrips = async (req: Request, res: Response) => {
     try {
-        const trips = await tripService.getAvailableTrips();
+        const { lat, lon, driverId } = req.query;
+        
+        let radius = 5;
+        if (driverId) {
+            const profile = await Profile.findOne({ where: { userId: driverId as string } });
+            if (profile) radius = profile.searchRadius || 5;
+        }
+
+        const trips = await tripService.getAvailableTrips(
+            lat ? Number(lat) : undefined, 
+            lon ? Number(lon) : undefined,
+            radius
+        );
         res.json(trips);
     } catch (error: any) {
         res.status(500).json({ error: formatSequelizeError(error) });

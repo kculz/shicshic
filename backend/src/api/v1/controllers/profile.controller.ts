@@ -24,6 +24,18 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 };
 
+export const updateProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = req.params['userId'] as string;
+        const updateData = req.body;
+        const profile = await profileService.updateProfileData(userId, updateData);
+        res.json(profile);
+    } catch (error: any) {
+        const status = error.message === 'Profile not found' ? 404 : 400;
+        res.status(status).json({ error: formatSequelizeError(error) });
+    }
+};
+
 export const updateKYC = async (req: Request, res: Response) => {
     try {
         const userId = req.params['userId'] as string;
