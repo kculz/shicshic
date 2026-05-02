@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import * as tripService from '../services/trip.service.js';
 import { formatSequelizeError } from '../../../utils/errorHandler.js';
 import Profile from '../../../database/models/Profile.js';
+import Trip from '../../../database/models/Trip.js';
+import { Op } from 'sequelize';
 
 export const requestTrip = async (req: Request, res: Response) => {
     try {
@@ -88,6 +90,31 @@ export const listAvailableTrips = async (req: Request, res: Response) => {
             radius
         );
         res.json(trips);
+    } catch (error: any) {
+        res.status(500).json({ error: formatSequelizeError(error) });
+    }
+};
+
+export const getActiveTrip = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.query;
+        if (!userId) {
+            res.status(400).json({ error: 'userId is required' });
+            return;
+        }
+
+        const trip = await Trip.findOne({
+            where: {
+                [Op.or]: [
+                    { passengerId: userId as string },
+                    { driverId: userId as string }
+                ],
+                status: { [Op.in]: ['accepted', 'en_route', 'boarding', 'in_progress'] }
+            },
+            order: [['updatedAt', 'DESC']]
+        });
+
+        res.json(trip);
     } catch (error: any) {
         res.status(500).json({ error: formatSequelizeError(error) });
     }

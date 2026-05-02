@@ -199,24 +199,39 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, [isDriver, userLat, userLon, user?.id]);
 
-  // Poll for active trip status if we have one
+  // Poll for active trip status if we have one or if we are a driver with active bids
   useEffect(() => {
     let interval: any;
-    if (activeTrip && activeTrip.status !== 'completed' && activeTrip.status !== 'cancelled') {
-        interval = setInterval(async () => {
-            try {
-                const res = await ApiClient.get(`/trips/${activeTrip.id}`);
-                setActiveTrip(res.data);
-                if (res.data.status === 'accepted') {
-                    // If just accepted, maybe play a sound or show a notification
+    
+    const checkActiveTrip = async () => {
+        try {
+            const res = await ApiClient.get(`/trips/active?userId=${user?.id}`);
+            const trip = res.data;
+            if (trip) {
+                setActiveTrip(trip);
+                // If I'm a driver and this trip was just accepted, go to chat
+                if (isDriver && trip.status === 'accepted') {
+                    // We need driver details etc for chat, but chat.tsx fetches them or takes them from params
+                    // For driver, we can pass passenger name if we have it
+                    router.push({
+                        pathname: '/chat' as any,
+                        params: { 
+                            tripId: trip.id,
+                            driverName: user?.fullName, // This is me
+                            fare: String(trip.fare),
+                            destName: trip.destinationLocation
+                        }
+                    });
                 }
-            } catch (e) {
-                console.error('Status poll failed', e);
             }
-        }, 3000);
-    }
+        } catch (e) {
+            console.error('Active trip poll failed', e);
+        }
+    };
+
+    interval = setInterval(checkActiveTrip, 5000);
     return () => clearInterval(interval);
-  }, [activeTrip?.id]);
+  }, [user?.id, isDriver]);
 
   const handleBidOnTrip = (trip: any) => {
     setSelectedTrip(trip);

@@ -94,7 +94,7 @@ export const getTripBids = async (req: Request, res: Response) => {
     try {
         const { id: tripId } = req.params;
         const bids = await Bid.findAll({
-            where: { tripId, status: 'pending' },
+            where: { tripId: tripId as string, status: 'pending' },
             order: [['createdAt', 'ASC']],
         });
         res.json({ bids: bids.map(b => (b as any).dataValues ?? b) });
@@ -243,7 +243,7 @@ export const getChatMessages = async (req: Request, res: Response) => {
     try {
         const { id: tripId } = req.params;
         const messages = await ChatMessage.findAll({
-            where: { tripId },
+            where: { tripId: tripId as string },
             order: [['createdAt', 'ASC']],
         });
         res.json({ messages: messages.map(m => (m as any).dataValues ?? m) });

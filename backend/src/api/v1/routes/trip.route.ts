@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import { requestTrip, getTrip, acceptTrip, listAvailableTrips } from '../controllers/trip.controller.js';
+import { requestTrip, getTrip, acceptTrip, listAvailableTrips, getActiveTrip } from '../controllers/trip.controller.js';
 import { getFareEstimate, simulateDriverBids, getTripBids, acceptBid, rejectBid, getChatMessages, sendChatMessage, placeBid } from '../controllers/bid.controller.js';
+import { initiateCall, updateCallStatus, getActiveCall } from '../controllers/call.controller.js';
 
 const router = Router();
 
 router.post('/request', requestTrip);
 router.get('/fare-estimate', getFareEstimate);
 router.get('/available', listAvailableTrips);
+router.get('/active', getActiveTrip);
 router.get('/:id', getTrip);
 router.post('/:id/accept', acceptTrip);
 
@@ -20,5 +22,10 @@ router.post('/:id/bids/:bidId/reject', rejectBid);
 // Chat
 router.get('/:id/messages', getChatMessages);
 router.post('/:id/messages', sendChatMessage);
+
+// Calls
+router.post('/calls', initiateCall);
+router.get('/calls/active', getActiveCall);
+router.patch('/calls/:id', updateCallStatus);
 
 export default router;

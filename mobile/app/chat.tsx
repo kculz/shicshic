@@ -42,6 +42,7 @@ export default function ChatScreen() {
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [showCallMenu, setShowCallMenu] = useState(false);
+    const [receiverId, setReceiverId] = useState<string | null>(null);
     const listRef = useRef<FlatList>(null);
     const router = useRouter();
 
@@ -52,11 +53,46 @@ export default function ChatScreen() {
         } catch { /* silent */ }
     }, [tripId]);
 
+    const fetchTripDetails = useCallback(async () => {
+        try {
+            const res = await apiClient.get(`/trips/${tripId}`);
+            const trip = res.data;
+            if (user?.role === 'passenger') {
+                setReceiverId(trip.driverId);
+            } else {
+                setReceiverId(trip.passengerId);
+            }
+        } catch { /* silent */ }
+    }, [tripId, user?.role]);
+
     useEffect(() => {
         loadMessages();
-        const interval = setInterval(loadMessages, 4000);
-        return () => clearInterval(interval);
-    }, [loadMessages]);
+        fetchTripDetails();
+        const msgInterval = setInterval(loadMessages, 4000);
+        
+        // Incoming call polling
+        const callInterval = setInterval(async () => {
+            try {
+                const res = await apiClient.get(`/trips/calls/active?userId=${user?.id}`);
+                const call = res.data.call;
+                if (call && call.receiverId === user?.id && call.status === 'dialing') {
+                    router.push({
+                        pathname: '/incoming-call' as any,
+                        params: { 
+                            callId: call.id, 
+                            callerName: user?.role === 'passenger' ? (driverName || 'Driver') : 'Passenger',
+                            tripId: call.tripId 
+                        }
+                    });
+                }
+            } catch { /* silent */ }
+        }, 5000);
+
+        return () => {
+            clearInterval(msgInterval);
+            clearInterval(callInterval);
+        };
+    }, [loadMessages, fetchTripDetails]);
 
     const handleSend = async () => {
         const trimmed = text.trim();
@@ -92,9 +128,20 @@ export default function ChatScreen() {
 
     const handleInAppCall = () => {
         setShowCallMenu(false);
+        if (!receiverId) {
+            Alert.alert('Please wait', 'Initializing call connection...');
+            return;
+        }
         router.push({
             pathname: '/calling' as any,
-            params: { driverName, vehicleMake, vehiclePlate, driverPhone }
+            params: { 
+                tripId, 
+                receiverId,
+                driverName: user?.role === 'passenger' ? driverName : 'Passenger', 
+                vehicleMake: vehicleMake || '', 
+                vehiclePlate: vehiclePlate || '', 
+                driverPhone: driverPhone || '' 
+            }
         });
     };
 
@@ -140,11 +187,17 @@ export default function ChatScreen() {
 
                 <View style={styles.driverInfo}>
                     <View style={styles.avatarSmall}>
-                        <Text style={styles.avatarSmallText}>{(driverName ?? '??').split(' ').map((n: string) => n[0]).join('')}</Text>
+                        <Text style={styles.avatarSmallText}>
+                            {(user?.role === 'passenger' ? (driverName ?? 'DR') : 'PS').split(' ').map((n: string) => n[0]).join('')}
+                        </Text>
                     </View>
                     <View>
-                        <Text style={styles.driverName}>{driverName}</Text>
-                        <Text style={styles.vehicleText}>{vehicleColor} {vehicleMake} {vehicleModel} · {vehiclePlate}</Text>
+                        <Text style={styles.driverName}>{user?.role === 'passenger' ? driverName : 'Passenger'}</Text>
+                        {user?.role === 'passenger' ? (
+                            <Text style={styles.vehicleText}>{vehicleColor} {vehicleMake} {vehicleModel} · {vehiclePlate}</Text>
+                        ) : (
+                            <Text style={styles.vehicleText}>Pick up location: {destName}</Text>
+                        )}
                     </View>
                 </View>
 

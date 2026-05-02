@@ -12,6 +12,7 @@ import sequelize from './config/database.js';
 // Models — imported to ensure Sequelize registers them for sync
 import './database/models/Bid.js';
 import './database/models/ChatMessage.js';
+import './database/models/Call.js';
 import './queues/otp.queue.js'; // initialize queues
 
 
