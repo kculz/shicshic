@@ -63,7 +63,6 @@ export default function IncomingCallScreen() {
 
         setAccepting(true);
         try {
-            await apiClient.patch(`/trips/calls/${callId}`, { status: 'active' });
             router.replace({
                 pathname: '/calling',
                 params: {
@@ -99,9 +98,9 @@ export default function IncomingCallScreen() {
 
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <Text style={styles.callingText}>Incoming In-App Call</Text>
+                    <Text style={styles.callingText}>Incoming Ride Call</Text>
                     <Text style={styles.callerName}>{callerName || 'Ride contact'}</Text>
-                    <Text style={styles.helperText}>Accept to open the live trip map and continue the conversation.</Text>
+                    <Text style={styles.helperText}>Accept to open the live trip map and join the WebRTC voice call.</Text>
                 </View>
 
                 <View style={styles.avatarContainer}>

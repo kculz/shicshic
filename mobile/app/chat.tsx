@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    KeyboardAvoidingView, Platform, StatusBar, Linking, Alert,
-    Modal, TouchableWithoutFeedback, ActivityIndicator
+    KeyboardAvoidingView, Platform, StatusBar, Alert,
+    ActivityIndicator
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
@@ -34,15 +34,12 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
-    const [showCallMenu, setShowCallMenu] = useState(false);
     const listRef = useRef<FlatList>(null);
-    const lastIncomingCallIdRef = useRef<string | null>(null);
     const router = useRouter();
 
     const trip = currentTrip?.id === tripId ? currentTrip : null;
     const demo = useTripDemo(trip);
     const counterpartName = user?.role === 'passenger' ? trip?.driverName || 'Driver' : trip?.passengerName || 'Passenger';
-    const counterpartPhone = user?.role === 'passenger' ? trip?.driverPhone || '' : trip?.passengerPhone || '';
     const receiverId = user?.role === 'passenger' ? trip?.driverId || '' : trip?.passengerId || '';
     const countdownLabel = demo?.stage === 'to_destination'
         ? 'to arrive'
@@ -78,42 +75,11 @@ export default function ChatScreen() {
             void fetchTripSession(tripId);
         }, 4000);
 
-        const callInterval = setInterval(async () => {
-            try {
-                const res = await apiClient.get(`/trips/calls/active?userId=${user.id}`);
-                const call = res.data.call;
-
-                if (!call || call.receiverId !== user.id || call.status !== 'dialing') {
-                    if (!call || call.status !== 'dialing') {
-                        lastIncomingCallIdRef.current = null;
-                    }
-                    return;
-                }
-
-                if (lastIncomingCallIdRef.current === call.id) {
-                    return;
-                }
-
-                lastIncomingCallIdRef.current = call.id;
-                router.push({
-                    pathname: '/incoming-call' as const,
-                    params: {
-                        callId: call.id,
-                        callerName: counterpartName,
-                        tripId: call.tripId,
-                    },
-                });
-            } catch (error) {
-                console.error('[Chat] Failed to poll active calls', error);
-            }
-        }, 2500);
-
         return () => {
             clearInterval(messageInterval);
             clearInterval(tripInterval);
-            clearInterval(callInterval);
         };
-    }, [counterpartName, fetchTripSession, loadMessages, router, tripId, user?.id]);
+    }, [fetchTripSession, loadMessages, tripId, user?.id]);
 
     useEffect(() => {
         if (messages.length) {
@@ -147,27 +113,14 @@ export default function ChatScreen() {
         }
     };
 
-    const handleCarrierCall = () => {
-        setShowCallMenu(false);
-        if (!counterpartPhone) {
-            Alert.alert('Phone unavailable', 'The other user does not have a phone number ready yet.');
-            return;
-        }
-
-        Linking.openURL(`tel:${counterpartPhone}`).catch(() =>
-            Alert.alert('Cannot call', 'Unable to open the phone dialer')
-        );
-    };
-
-    const handleInAppCall = () => {
-        setShowCallMenu(false);
-        if (!tripId || !receiverId) {
-            Alert.alert('Please wait', 'The ride connection is still loading.');
+    const handleWebRTCCall = () => {
+        if (!tripId || !receiverId || !user?.id) {
+            Alert.alert('Call unavailable', 'We could not find the other rider for this trip yet.');
             return;
         }
 
         router.push({
-            pathname: '/calling' as const,
+            pathname: '/calling',
             params: {
                 tripId,
                 receiverId,
@@ -232,7 +185,7 @@ export default function ChatScreen() {
                     <Text style={styles.sosText}>SOS</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.callBtn} onPress={() => setShowCallMenu(true)}>
+                <TouchableOpacity style={styles.callBtn} onPress={handleWebRTCCall}>
                     <MaterialCommunityIcons name="phone" size={20} color="#fff" />
                 </TouchableOpacity>
             </View>
@@ -285,7 +238,10 @@ export default function ChatScreen() {
                         <View style={styles.statusDot} />
                         <Text style={styles.rideBadgeText}>{demo?.countdownLabel || 'Syncing trip'}</Text>
                     </View>
-                    <Text style={styles.fareText}>{trip?.fare ? `$${trip.fare.toFixed(2)}` : ''}</Text>
+                    <View style={styles.tripCallNote}>
+                        <MaterialCommunityIcons name="access-point" size={13} color={ORANGE} />
+                        <Text style={styles.tripCallNoteText}>Tap call to open live voice with WebRTC</Text>
+                    </View>
                 </View>
             </View>
 
@@ -335,49 +291,6 @@ export default function ChatScreen() {
                 </TouchableOpacity>
             </View>
 
-            <Modal
-                visible={showCallMenu}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowCallMenu(false)}
-            >
-                <TouchableWithoutFeedback onPress={() => setShowCallMenu(false)}>
-                    <View style={styles.modalOverlay}>
-                        <TouchableWithoutFeedback>
-                            <View style={styles.menuContent}>
-                                <Text style={styles.menuTitle}>Call {counterpartName}</Text>
-                                <Text style={styles.menuSubTitle}>Choose how you want to connect.</Text>
-
-                                <TouchableOpacity style={styles.menuBtn} onPress={handleCarrierCall}>
-                                    <View style={[styles.menuIcon, { backgroundColor: '#F0F9FF' }]}>
-                                        <MaterialCommunityIcons name="cellphone" size={24} color="#0EA5E9" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.menuBtnText}>Carrier Call</Text>
-                                        <Text style={styles.menuBtnSub}>Use the phone network for a regular call</Text>
-                                    </View>
-                                    <MaterialCommunityIcons name="chevron-right" size={20} color={GRAY} />
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={[styles.menuBtn, { borderBottomWidth: 0 }]} onPress={handleInAppCall}>
-                                    <View style={[styles.menuIcon, { backgroundColor: ORANGE_LIGHT }]}>
-                                        <MaterialCommunityIcons name="phone-outline" size={24} color={ORANGE} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.menuBtnText}>In-App Call</Text>
-                                        <Text style={styles.menuBtnSub}>Stay in the trip view with the live map and timer</Text>
-                                    </View>
-                                    <MaterialCommunityIcons name="chevron-right" size={20} color={GRAY} />
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCallMenu(false)}>
-                                    <Text style={styles.cancelBtnText}>Cancel</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
         </KeyboardAvoidingView>
     );
 }
@@ -412,7 +325,8 @@ const styles = StyleSheet.create({
     rideBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0FDF4', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 8 },
     statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
     rideBadgeText: { fontSize: 12, fontWeight: '700', color: '#166534' },
-    fareText: { fontSize: 16, fontWeight: '900', color: DARK },
+    tripCallNote: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: ORANGE_LIGHT, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 8 },
+    tripCallNoteText: { fontSize: 11, fontWeight: '700', color: '#A65100' },
 
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingHorizontal: 30 },
     loadingText: { fontSize: 14, color: GRAY, textAlign: 'center' },
@@ -436,15 +350,4 @@ const styles = StyleSheet.create({
     input: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, color: DARK, maxHeight: 100 },
     sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center' },
     sendBtnDisabled: { backgroundColor: '#FFD6B0' },
-
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    menuContent: { backgroundColor: '#fff', borderRadius: 24, width: '100%', padding: 24, alignItems: 'center' },
-    menuTitle: { fontSize: 18, fontWeight: '800', color: DARK, marginBottom: 4 },
-    menuSubTitle: { fontSize: 14, color: GRAY, marginBottom: 24 },
-    menuBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, width: '100%', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-    menuIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    menuBtnText: { fontSize: 16, fontWeight: '700', color: DARK },
-    menuBtnSub: { fontSize: 12, color: GRAY, marginTop: 1 },
-    cancelBtn: { marginTop: 16, width: '100%', paddingVertical: 14, alignItems: 'center' },
-    cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
 });
