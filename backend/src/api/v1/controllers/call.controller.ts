@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import Call, { type CallIceCandidate, type CallSessionDescription } from '../../../database/models/Call.js';
 import { Op } from 'sequelize';
+import { emitCallUpdated, emitIncomingCall } from '../../../realtime/callSocket.js';
 
 const isSessionDescription = (value: unknown): value is CallSessionDescription => {
     if (!value || typeof value !== 'object') {
@@ -45,6 +46,7 @@ export const initiateCall = async (req: Request, res: Response) => {
             receiverIceCandidates: [],
         });
 
+        emitIncomingCall(call);
         res.status(201).json({ call });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -67,6 +69,7 @@ export const updateCallStatus = async (req: Request, res: Response) => {
             connectedAt: status === 'active' ? call.connectedAt ?? new Date() : call.connectedAt,
             endedAt: ['ended', 'rejected', 'missed'].includes(status) ? new Date() : call.endedAt,
         });
+        emitCallUpdated(call);
         res.json({ call });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -90,6 +93,7 @@ export const saveCallOffer = async (req: Request, res: Response) => {
         }
 
         await call.update({ offerSdp });
+        emitCallUpdated(call);
         res.json({ call });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -113,6 +117,7 @@ export const saveCallAnswer = async (req: Request, res: Response) => {
         }
 
         await call.update({ answerSdp });
+        emitCallUpdated(call);
         res.json({ call });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -155,6 +160,7 @@ export const appendCallCandidate = async (req: Request, res: Response) => {
             } as Partial<Call>);
         }
 
+        emitCallUpdated(call);
         res.json({ call });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

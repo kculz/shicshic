@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Express, Request, Response } from 'express';
+import { createServer } from 'http';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -15,12 +16,15 @@ import './database/models/Bid.js';
 import './database/models/ChatMessage.js';
 import './database/models/Call.js';
 import './database/models/Incident.js';
+import { runMigrations } from './database/migrations/runner.js';
+import { initializeCallSocket } from './realtime/callSocket.js';
 import './queues/otp.queue.js'; // initialize queues
 
 
 dotenv.config();
 
 const app: Express = express();
+const server = createServer(app);
 const port = process.env.PORT || 5000;
 
 // Middleware
@@ -51,11 +55,17 @@ const startServer = async () => {
         await sequelize.authenticate();
         console.log('[database]: Connection has been established successfully.');
 
-        // Sync models
-        await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-        console.log('[database]: Models synced successfully.');
+        if (process.env.DB_BOOTSTRAP_SYNC === 'true') {
+            await sequelize.sync();
+            console.log('[database]: Bootstrap sync completed.');
+        }
 
-        app.listen(port, () => {
+        await runMigrations();
+        console.log('[database]: Migrations completed successfully.');
+
+        initializeCallSocket(server);
+
+        server.listen(port, () => {
             console.log(`[server]: Server is running at http://localhost:${port}`);
         });
     } catch (error) {
