@@ -58,6 +58,7 @@ function RootLayoutNav() {
         <Stack.Screen name="bidding" options={{ headerShown: false }} />
         <Stack.Screen name="wallet" options={{ title: 'My Wallet', headerTintColor: '#FF6B00' }} />
         <Stack.Screen name="profile" options={{ title: 'Edit Profile' }} />
+        <Stack.Screen name="report-incident" options={{ title: 'Report Incident' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

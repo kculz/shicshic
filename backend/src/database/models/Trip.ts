@@ -1,6 +1,7 @@
 import { DataTypes, Model } from 'sequelize';
 import type { Optional } from 'sequelize';
 import sequelize from '../../config/database.js';
+import User from './User.js';
 
 interface TripAttributes {
     id: string;
@@ -118,5 +119,10 @@ Trip.init(
         tableName: 'trips',
     }
 );
+
+User.hasMany(Trip, { as: 'passengerTrips', foreignKey: 'passengerId' });
+User.hasMany(Trip, { as: 'driverTrips', foreignKey: 'driverId' });
+Trip.belongsTo(User, { as: 'passenger', foreignKey: 'passengerId' });
+Trip.belongsTo(User, { as: 'driver', foreignKey: 'driverId' });
 
 export default Trip;

@@ -1,15 +1,18 @@
 import { DataTypes, Model } from 'sequelize';
 import type { Optional } from 'sequelize';
 import sequelize from '../../config/database.js';
+import User from './User.js';
+import Trip from './Trip.js';
 
 interface IncidentAttributes {
     id: string;
-    tripId: string;
+    tripId?: string | null;
     reporterId: string;
-    category: 'theft' | 'assault' | 'harassment' | 'accident' | 'damage' | 'fraud' | 'unsafe_driving' | 'other';
+    type: 'accident' | 'robbery' | 'kidnapping' | 'harassment' | 'theft' | 'assault' | 'damage' | 'fraud' | 'unsafe-driving' | 'other';
     description: string;
-    status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
-    evidenceUrls?: string[];
+    locationLat?: number | null;
+    locationLon?: number | null;
+    status: 'pending' | 'investigating' | 'resolved';
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -18,12 +21,13 @@ interface IncidentCreationAttributes extends Optional<IncidentAttributes, 'id' |
 
 class Incident extends Model<IncidentAttributes, IncidentCreationAttributes> implements IncidentAttributes {
     declare id: string;
-    declare tripId: string;
+    declare tripId?: string | null;
     declare reporterId: string;
-    declare category: 'theft' | 'assault' | 'harassment' | 'accident' | 'damage' | 'fraud' | 'unsafe_driving' | 'other';
+    declare type: 'accident' | 'robbery' | 'kidnapping' | 'harassment' | 'theft' | 'assault' | 'damage' | 'fraud' | 'unsafe-driving' | 'other';
     declare description: string;
-    declare status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
-    declare evidenceUrls?: string[];
+    declare locationLat?: number | null;
+    declare locationLon?: number | null;
+    declare status: 'pending' | 'investigating' | 'resolved';
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -38,29 +42,40 @@ Incident.init(
         },
         tripId: {
             type: DataTypes.UUID,
-            allowNull: false,
+            allowNull: true,
+            references: {
+                model: 'trips',
+                key: 'id',
+            },
         },
         reporterId: {
             type: DataTypes.UUID,
             allowNull: false,
+            references: {
+                model: 'users',
+                key: 'id',
+            },
         },
-        category: {
-            type: DataTypes.ENUM('theft', 'assault', 'harassment', 'accident', 'damage', 'fraud', 'unsafe_driving', 'other'),
+        type: {
+            type: DataTypes.ENUM('accident', 'robbery', 'kidnapping', 'harassment', 'theft', 'assault', 'damage', 'fraud', 'unsafe-driving', 'other'),
             allowNull: false,
         },
         description: {
             type: DataTypes.TEXT,
             allowNull: false,
         },
+        locationLat: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        locationLon: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
         status: {
-            type: DataTypes.ENUM('pending', 'investigating', 'resolved', 'dismissed'),
+            type: DataTypes.ENUM('pending', 'investigating', 'resolved'),
             allowNull: false,
             defaultValue: 'pending',
-        },
-        evidenceUrls: {
-            type: DataTypes.JSONB,
-            allowNull: true,
-            defaultValue: [],
         },
     },
     {
@@ -68,5 +83,9 @@ Incident.init(
         tableName: 'incidents',
     }
 );
+
+// Associations
+Incident.belongsTo(User, { as: 'reporter', foreignKey: 'reporterId' });
+Incident.belongsTo(Trip, { as: 'trip', foreignKey: 'tripId' });
 
 export default Incident;

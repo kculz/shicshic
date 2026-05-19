@@ -8,11 +8,13 @@ import userRoutes from './api/v1/routes/user.route.js';
 import profileRoutes from './api/v1/routes/profile.route.js';
 import tripRoutes from './api/v1/routes/trip.route.js';
 import paymentRoutes from './api/v1/routes/payment.route.js';
+import incidentRoutes from './api/v1/routes/incident.route.js';
 import sequelize from './config/database.js';
 // Models — imported to ensure Sequelize registers them for sync
 import './database/models/Bid.js';
 import './database/models/ChatMessage.js';
 import './database/models/Call.js';
+import './database/models/Incident.js';
 import './queues/otp.queue.js'; // initialize queues
 
 
@@ -37,6 +39,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/profiles', profileRoutes);
 app.use('/api/v1/trips', tripRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/incidents', incidentRoutes);
 
 // Base route for v1
 app.get('/api/v1', (req: Request, res: Response) => {
