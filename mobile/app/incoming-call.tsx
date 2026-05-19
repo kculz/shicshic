@@ -10,6 +10,9 @@ import Animated, {
     withTiming, withDelay
 } from 'react-native-reanimated';
 import apiClient from '../api/client';
+import { getCallSocket } from '../realtime/callSocket';
+import { useAuthStore } from '../store/useAuthStore';
+import type { TripCall } from '../types/call';
 
 const ORANGE = '#FF6B00';
 const DARK = '#1A1A2E';
@@ -33,6 +36,7 @@ const PulseCircle = ({ delay = 0, color = ORANGE }: { delay?: number; color?: st
 };
 
 export default function IncomingCallScreen() {
+    const { token, user } = useAuthStore();
     const { callId, callerName, tripId } = useLocalSearchParams<{
         callId: string;
         callerName: string;
@@ -42,21 +46,51 @@ export default function IncomingCallScreen() {
     const [accepting, setAccepting] = React.useState(false);
 
     useEffect(() => {
-        if (!callId) return;
+        if (!callId || !user?.id) return;
 
-        const poll = setInterval(async () => {
+        let isMounted = true;
+        const socket = getCallSocket({ userId: user.id, token });
+
+        const handleCallUpdated = (payload: { call?: TripCall }) => {
+            const call = payload.call;
+            if (!isMounted || !call || call.id !== callId) {
+                return;
+            }
+
+            if (call.status === 'ended' || call.status === 'rejected' || call.status === 'missed') {
+                router.back();
+            }
+        };
+
+        const bootstrap = async () => {
             try {
                 const res = await apiClient.get(`/trips/calls/active?callId=${callId}`);
-                if (!res.data.call || res.data.call.status === 'ended' || res.data.call.status === 'rejected') {
+                const call = res.data?.call as TripCall | null;
+                if (!isMounted) {
+                    return;
+                }
+
+                if (!call) {
+                    router.back();
+                    return;
+                }
+
+                if (call.status === 'ended' || call.status === 'rejected' || call.status === 'missed') {
                     router.back();
                 }
             } catch (error) {
-                console.error('[IncomingCall] Failed to poll call', error);
+                console.error('[IncomingCall] Failed to bootstrap call', error);
             }
-        }, 2000);
+        };
 
-        return () => clearInterval(poll);
-    }, [callId, router]);
+        socket.on('call:updated', handleCallUpdated);
+        void bootstrap();
+
+        return () => {
+            isMounted = false;
+            socket.off('call:updated', handleCallUpdated);
+        };
+    }, [callId, router, token, user?.id]);
 
     const handleAccept = async () => {
         if (!callId) return;

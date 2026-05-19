@@ -7,6 +7,8 @@ import {
     type MediaStream,
 } from 'react-native-webrtc';
 import apiClient from '../api/client';
+import { getCallSocket } from '../realtime/callSocket';
+import { useAuthStore } from '../store/useAuthStore';
 import type { TripCall, TripCallIceCandidate, TripCallParticipant, TripCallStatus } from '../types/call';
 
 type CallPhase = 'idle' | 'preparing' | 'dialing' | 'connecting' | 'active' | 'ended' | 'error';
@@ -68,6 +70,7 @@ export const useWebRTCCall = ({
     enabled,
     onEnded,
 }: UseWebRTCCallOptions): UseWebRTCCallResult => {
+    const { token, user } = useAuthStore();
     const [call, setCall] = useState<TripCall | null>(null);
     const [phase, setPhase] = useState<CallPhase>('idle');
     const [localReady, setLocalReady] = useState(false);
@@ -87,7 +90,7 @@ export const useWebRTCCall = ({
 
     onEndedRef.current = onEnded;
 
-    const canStart = Boolean(callId && participant && enabled);
+    const canStart = Boolean(callId && participant && enabled && user?.id);
     const iceServers = useMemo(() => getIceServers(), []);
 
     const closeTransport = useCallback(() => {
@@ -336,6 +339,13 @@ export const useWebRTCCall = ({
         });
     }, [applyRemoteCandidate, ensurePeer, flushPendingRemoteCandidates, participant]);
 
+    const handleEndedCall = useCallback(() => {
+        closeTransport();
+        setCall(null);
+        setPhase('ended');
+        onEndedRef.current?.();
+    }, [closeTransport]);
+
     const endCall = useCallback(async (status: TripCallStatus = 'ended') => {
         if (!callId || shuttingDownRef.current) {
             closeTransport();
@@ -366,7 +376,7 @@ export const useWebRTCCall = ({
     }, []);
 
     useEffect(() => {
-        if (!canStart || !callId) {
+        if (!canStart || !callId || !user?.id) {
             setCall(null);
             setPhase('idle');
             closeTransport();
@@ -374,8 +384,24 @@ export const useWebRTCCall = ({
         }
 
         let isMounted = true;
+        const socket = getCallSocket({ userId: user.id, token });
 
-        const pollCall = async () => {
+        const handleCallUpdated = (payload: { call?: TripCall }) => {
+            const nextCall = payload.call;
+            if (!isMounted || !nextCall || nextCall.id !== callId) {
+                return;
+            }
+
+            if (['ended', 'rejected', 'missed'].includes(nextCall.status)) {
+                handleEndedCall();
+                return;
+            }
+
+            setCall(nextCall);
+            void applyCallSnapshot(nextCall);
+        };
+
+        const bootstrap = async () => {
             try {
                 const res = await apiClient.get(`/trips/calls/active?callId=${callId}`);
                 const nextCall = (res.data?.call ?? null) as TripCall | null;
@@ -385,34 +411,29 @@ export const useWebRTCCall = ({
                 }
 
                 if (!nextCall || ['ended', 'rejected', 'missed'].includes(nextCall.status)) {
-                    closeTransport();
-                    setCall(null);
-                    setPhase('ended');
-                    onEndedRef.current?.();
+                    handleEndedCall();
                     return;
                 }
 
                 setCall(nextCall);
                 await applyCallSnapshot(nextCall);
             } catch (error) {
-                console.error('[WebRTC] Failed to poll call state', error);
+                console.error('[WebRTC] Failed to bootstrap call state', error);
                 if (isMounted) {
                     setPhase('error');
                 }
             }
         };
 
-        void pollCall();
-        const interval = setInterval(() => {
-            void pollCall();
-        }, 1500);
+        socket.on('call:updated', handleCallUpdated);
+        void bootstrap();
 
         return () => {
             isMounted = false;
-            clearInterval(interval);
+            socket.off('call:updated', handleCallUpdated);
             closeTransport();
         };
-    }, [applyCallSnapshot, callId, canStart, closeTransport]);
+    }, [applyCallSnapshot, callId, canStart, closeTransport, handleEndedCall, token, user?.id]);
 
     return {
         call,
