@@ -47,16 +47,28 @@ export const updateCallStatus = async (req: Request, res: Response) => {
 
 export const getActiveCall = async (req: Request, res: Response) => {
     try {
-        const { userId } = req.query;
-        
-        const call = await Call.findOne({
-            where: {
+        const { userId, callId } = req.query;
+
+        if (!userId && !callId) {
+            res.status(400).json({ error: 'userId or callId is required' });
+            return;
+        }
+
+        const where = callId
+            ? {
+                id: callId as string,
+                status: { [Op.in]: ['dialing', 'active'] }
+            }
+            : {
                 [Op.or]: [
                     { callerId: userId as string },
                     { receiverId: userId as string }
                 ],
                 status: { [Op.in]: ['dialing', 'active'] }
-            },
+            };
+
+        const call = await Call.findOne({
+            where,
             order: [['createdAt', 'DESC']]
         });
 

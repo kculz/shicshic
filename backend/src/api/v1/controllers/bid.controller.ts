@@ -172,10 +172,10 @@ export const acceptBid = async (req: Request, res: Response) => {
         const SYSTEM_CHARGE_PERCENT = 0.10; // 10% system charge
         const chargeAmount = fare * SYSTEM_CHARGE_PERCENT;
 
-        if (Number(driver.credits) < fare) {
+        if (Number(driver.credits) < chargeAmount) {
             res.status(403).json({ 
                 error: 'Insufficient credits', 
-                message: `You need at least $${fare.toFixed(2)} in credits to accept this ride. Current balance: $${Number(driver.credits).toFixed(2)}` 
+                message: `You need at least $${chargeAmount.toFixed(2)} in credits to accept this ride. Current balance: $${Number(driver.credits).toFixed(2)}`
             });
             return;
         }
