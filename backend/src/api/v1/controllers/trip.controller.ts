@@ -4,6 +4,59 @@ import { formatSequelizeError } from '../../../utils/errorHandler.js';
 import Profile from '../../../database/models/Profile.js';
 import Trip from '../../../database/models/Trip.js';
 import { Op } from 'sequelize';
+import Bid from '../../../database/models/Bid.js';
+import User from '../../../database/models/User.js';
+
+const ACTIVE_TRIP_STATUSES = ['accepted', 'en_route', 'boarding', 'in_progress'] as const;
+
+const buildTripSession = async (trip: Trip | null) => {
+    if (!trip) {
+        return null;
+    }
+
+    const [acceptedBid, passengerUser, passengerProfile, driverUser, driverProfile] = await Promise.all([
+        Bid.findOne({
+            where: {
+                tripId: trip.id,
+                status: 'accepted',
+            },
+            order: [['updatedAt', 'DESC']],
+        }),
+        User.findByPk(trip.passengerId),
+        Profile.findOne({ where: { userId: trip.passengerId } }),
+        trip.driverId ? User.findByPk(trip.driverId) : Promise.resolve(null),
+        trip.driverId ? Profile.findOne({ where: { userId: trip.driverId } }) : Promise.resolve(null),
+    ]);
+
+    return {
+        id: trip.id,
+        passengerId: trip.passengerId,
+        driverId: trip.driverId ?? null,
+        status: trip.status,
+        pickupLocation: trip.pickupLocation,
+        destinationLocation: trip.destinationLocation,
+        pickupLat: Number(trip.pickupLat),
+        pickupLon: Number(trip.pickupLon),
+        destLat: Number(trip.destLat),
+        destLon: Number(trip.destLon),
+        fare: trip.fare !== null && trip.fare !== undefined ? Number(trip.fare) : null,
+        isShared: Boolean(trip.isShared),
+        seatsRequested: trip.seatsRequested,
+        passengerName: passengerProfile?.fullName || 'Passenger',
+        passengerPhone: passengerUser?.phoneNumber || '',
+        driverName: acceptedBid?.driverName || driverProfile?.fullName || 'Driver',
+        driverPhone: acceptedBid?.driverPhone || driverUser?.phoneNumber || '',
+        driverRating: acceptedBid?.driverRating ?? null,
+        vehicleMake: acceptedBid?.vehicleMake || driverProfile?.vehicleMake || '',
+        vehicleModel: acceptedBid?.vehicleModel || driverProfile?.vehicleModel || '',
+        vehiclePlate: acceptedBid?.vehiclePlate || driverProfile?.vehiclePlate || '',
+        vehicleColor: acceptedBid?.vehicleColor || driverProfile?.vehicleColor || '',
+        estimatedArrivalMins: acceptedBid?.estimatedArrivalMins ?? null,
+        acceptedBidId: acceptedBid?.id ?? null,
+        acceptedAt: acceptedBid?.updatedAt ?? trip.updatedAt,
+        updatedAt: trip.updatedAt,
+    };
+};
 
 export const requestTrip = async (req: Request, res: Response) => {
     try {
@@ -61,6 +114,18 @@ export const getTrip = async (req: Request, res: Response) => {
     }
 };
 
+export const getTripSession = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const trip = await tripService.getTripById(id as string);
+        const session = await buildTripSession(trip);
+        res.json({ trip: session });
+    } catch (error: any) {
+        const status = error.message === 'Trip not found' ? 404 : 500;
+        res.status(status).json({ error: formatSequelizeError(error) });
+    }
+};
+
 export const acceptTrip = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -109,12 +174,38 @@ export const getActiveTrip = async (req: Request, res: Response) => {
                     { passengerId: userId as string },
                     { driverId: userId as string }
                 ],
-                status: { [Op.in]: ['accepted', 'en_route', 'boarding', 'in_progress'] }
+                status: { [Op.in]: ACTIVE_TRIP_STATUSES }
             },
             order: [['updatedAt', 'DESC']]
         });
 
         res.json(trip);
+    } catch (error: any) {
+        res.status(500).json({ error: formatSequelizeError(error) });
+    }
+};
+
+export const getActiveTripSession = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.query;
+        if (!userId) {
+            res.status(400).json({ error: 'userId is required' });
+            return;
+        }
+
+        const trip = await Trip.findOne({
+            where: {
+                [Op.or]: [
+                    { passengerId: userId as string },
+                    { driverId: userId as string }
+                ],
+                status: { [Op.in]: ACTIVE_TRIP_STATUSES }
+            },
+            order: [['updatedAt', 'DESC']]
+        });
+
+        const session = await buildTripSession(trip);
+        res.json({ trip: session });
     } catch (error: any) {
         res.status(500).json({ error: formatSequelizeError(error) });
     }

@@ -3,6 +3,14 @@ import type { Optional } from 'sequelize';
 import sequelize from '../../config/database.js';
 import User from './User.js';
 
+export interface SavedPlace {
+    id: string;
+    label: string;
+    address: string;
+    lat: number;
+    lon: number;
+}
+
 interface ProfileAttributes {
     id: string;
     userId: string;
@@ -17,11 +25,18 @@ interface ProfileAttributes {
     vehicleColor?: string | null;
     rejectionReason?: string | null;
     searchRadius: number;
+    homeAddress?: string | null;
+    homeLat?: number | null;
+    homeLon?: number | null;
+    workAddress?: string | null;
+    workLat?: number | null;
+    workLon?: number | null;
+    savedPlaces: SavedPlace[];
     createdAt?: Date;
     updatedAt?: Date;
 }
 
-interface ProfileCreationAttributes extends Optional<ProfileAttributes, 'id' | 'kycStatus'> { }
+interface ProfileCreationAttributes extends Optional<ProfileAttributes, 'id' | 'kycStatus' | 'searchRadius' | 'savedPlaces'> { }
 
 class Profile extends Model<ProfileAttributes, ProfileCreationAttributes> implements ProfileAttributes {
     declare id: string;
@@ -37,6 +52,13 @@ class Profile extends Model<ProfileAttributes, ProfileCreationAttributes> implem
     declare vehicleColor?: string | null;
     declare rejectionReason?: string | null;
     declare searchRadius: number;
+    declare homeAddress?: string | null;
+    declare homeLat?: number | null;
+    declare homeLon?: number | null;
+    declare workAddress?: string | null;
+    declare workLat?: number | null;
+    declare workLon?: number | null;
+    declare savedPlaces: SavedPlace[];
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -102,6 +124,35 @@ Profile.init(
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 5, // 5km default
+        },
+        homeAddress: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        homeLat: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        homeLon: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        workAddress: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        workLat: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        workLon: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        savedPlaces: {
+            type: DataTypes.JSONB,
+            allowNull: false,
+            defaultValue: [],
         },
     },
     {

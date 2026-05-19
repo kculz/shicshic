@@ -1,18 +1,22 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     KeyboardAvoidingView, Platform, StatusBar, Linking, Alert,
-    Modal, TouchableWithoutFeedback
+    Modal, TouchableWithoutFeedback, ActivityIndicator
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import apiClient from '../api/client';
+import LeafletMap from '../components/LeafletMap';
 import { useAuthStore } from '../store/useAuthStore';
+import { useTripStore } from '../store/useTripStore';
+import { useTripDemo } from '../hooks/useTripDemo';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
 const DARK = '#1A1A2E';
 const GRAY = '#8A8FA8';
+const BG = '#F7F7F9';
 
 interface Message {
     id: string;
@@ -25,144 +29,165 @@ interface Message {
 
 export default function ChatScreen() {
     const { user } = useAuthStore();
-    const { tripId, driverName, driverPhone, vehicleMake, vehicleModel, vehiclePlate, vehicleColor, fare, destName } =
-        useLocalSearchParams<{ 
-            tripId: string; 
-            driverName: string; 
-            driverPhone: string; 
-            vehicleMake: string; 
-            vehicleModel?: string;
-            vehiclePlate: string; 
-            vehicleColor?: string;
-            fare: string; 
-            destName: string 
-        }>();
-
+    const { tripId } = useLocalSearchParams<{ tripId: string }>();
+    const { currentTrip, fetchTripSession, sessionLoading } = useTripStore();
     const [messages, setMessages] = useState<Message[]>([]);
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [showCallMenu, setShowCallMenu] = useState(false);
-    const [receiverId, setReceiverId] = useState<string | null>(null);
     const listRef = useRef<FlatList>(null);
+    const lastIncomingCallIdRef = useRef<string | null>(null);
     const router = useRouter();
 
+    const trip = currentTrip?.id === tripId ? currentTrip : null;
+    const demo = useTripDemo(trip);
+    const counterpartName = user?.role === 'passenger' ? trip?.driverName || 'Driver' : trip?.passengerName || 'Passenger';
+    const counterpartPhone = user?.role === 'passenger' ? trip?.driverPhone || '' : trip?.passengerPhone || '';
+    const receiverId = user?.role === 'passenger' ? trip?.driverId || '' : trip?.passengerId || '';
+    const countdownLabel = demo?.stage === 'to_destination'
+        ? 'to arrive'
+        : demo?.stage === 'to_pickup'
+            ? 'to pickup'
+            : 'status';
+
     const loadMessages = useCallback(async () => {
+        if (!tripId) return;
+
         try {
             const res = await apiClient.get(`/trips/${tripId}/messages`);
             setMessages(res.data.messages ?? []);
-        } catch { /* silent */ }
+        } catch (error) {
+            console.error('[Chat] Failed to load messages', error);
+        }
     }, [tripId]);
 
-    const fetchTripDetails = useCallback(async () => {
-        try {
-            const res = await apiClient.get(`/trips/${tripId}`);
-            const trip = res.data;
-            if (user?.role === 'passenger') {
-                setReceiverId(trip.driverId);
-            } else {
-                setReceiverId(trip.passengerId);
-            }
-        } catch { /* silent */ }
-    }, [tripId, user?.role]);
+    useEffect(() => {
+        if (!tripId) return;
+        void fetchTripSession(tripId);
+    }, [fetchTripSession, tripId]);
 
     useEffect(() => {
-        loadMessages();
-        fetchTripDetails();
-        const msgInterval = setInterval(loadMessages, 4000);
-        
-        // Incoming call polling
+        if (!tripId || !user?.id) return;
+
+        void loadMessages();
+        const messageInterval = setInterval(() => {
+            void loadMessages();
+        }, 3000);
+
+        const tripInterval = setInterval(() => {
+            void fetchTripSession(tripId);
+        }, 4000);
+
         const callInterval = setInterval(async () => {
             try {
-                const res = await apiClient.get(`/trips/calls/active?userId=${user?.id}`);
+                const res = await apiClient.get(`/trips/calls/active?userId=${user.id}`);
                 const call = res.data.call;
-                if (call && call.receiverId === user?.id && call.status === 'dialing') {
-                    router.push({
-                        pathname: '/incoming-call' as any,
-                        params: { 
-                            callId: call.id, 
-                            callerName: user?.role === 'passenger' ? (driverName || 'Driver') : 'Passenger',
-                            tripId: call.tripId 
-                        }
-                    });
+
+                if (!call || call.receiverId !== user.id || call.status !== 'dialing') {
+                    if (!call || call.status !== 'dialing') {
+                        lastIncomingCallIdRef.current = null;
+                    }
+                    return;
                 }
-            } catch { /* silent */ }
-        }, 5000);
+
+                if (lastIncomingCallIdRef.current === call.id) {
+                    return;
+                }
+
+                lastIncomingCallIdRef.current = call.id;
+                router.push({
+                    pathname: '/incoming-call' as const,
+                    params: {
+                        callId: call.id,
+                        callerName: counterpartName,
+                        tripId: call.tripId,
+                    },
+                });
+            } catch (error) {
+                console.error('[Chat] Failed to poll active calls', error);
+            }
+        }, 2500);
 
         return () => {
-            clearInterval(msgInterval);
+            clearInterval(messageInterval);
+            clearInterval(tripInterval);
             clearInterval(callInterval);
         };
-    }, [loadMessages, fetchTripDetails]);
+    }, [counterpartName, fetchTripSession, loadMessages, router, tripId, user?.id]);
+
+    useEffect(() => {
+        if (messages.length) {
+            const timer = setTimeout(() => {
+                listRef.current?.scrollToEnd({ animated: true });
+            }, 120);
+
+            return () => clearTimeout(timer);
+        }
+    }, [messages.length]);
 
     const handleSend = async () => {
         const trimmed = text.trim();
-        if (!trimmed) return;
+        if (!trimmed || !tripId || !user?.id) return;
+
         setText('');
         setSending(true);
         try {
             await apiClient.post(`/trips/${tripId}/messages`, {
-                senderId: user?.id,
-                senderRole: user?.role,
-                senderName: user?.fullName || 'User',
+                senderId: user.id,
+                senderRole: user.role,
+                senderName: user.fullName || (user.role === 'driver' ? 'Driver' : 'Passenger'),
                 message: trimmed,
             });
-            loadMessages();
-        } catch {
+            await loadMessages();
+        } catch (error) {
+            console.error('[Chat] Failed to send message', error);
             Alert.alert('Error', 'Could not send message');
         } finally {
             setSending(false);
         }
     };
 
-    const handleCall = () => {
-        setShowCallMenu(true);
-    };
-
     const handleCarrierCall = () => {
         setShowCallMenu(false);
-        if (!driverPhone) return;
-        Linking.openURL(`tel:${driverPhone}`).catch(() =>
-            Alert.alert('Cannot call', 'Unable to open phone dialer')
+        if (!counterpartPhone) {
+            Alert.alert('Phone unavailable', 'The other user does not have a phone number ready yet.');
+            return;
+        }
+
+        Linking.openURL(`tel:${counterpartPhone}`).catch(() =>
+            Alert.alert('Cannot call', 'Unable to open the phone dialer')
         );
     };
 
     const handleInAppCall = () => {
         setShowCallMenu(false);
-        if (!receiverId) {
-            Alert.alert('Please wait', 'Initializing call connection...');
+        if (!tripId || !receiverId) {
+            Alert.alert('Please wait', 'The ride connection is still loading.');
             return;
         }
+
         router.push({
-            pathname: '/calling' as any,
-            params: { 
-                tripId, 
+            pathname: '/calling' as const,
+            params: {
+                tripId,
                 receiverId,
-                driverName: user?.role === 'passenger' ? driverName : 'Passenger', 
-                vehicleMake: vehicleMake || '', 
-                vehiclePlate: vehiclePlate || '', 
-                driverPhone: driverPhone || '' 
-            }
+                contactName: counterpartName,
+            },
         });
     };
-
-    const scrollToEnd = () => {
-        if (messages.length) setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-    };
-
-    useEffect(scrollToEnd, [messages.length]);
 
     const renderMessage = ({ item }: { item: Message }) => {
         const isMe = item.senderId === user?.id;
         return (
             <View style={[styles.msgRow, isMe ? styles.msgRowRight : styles.msgRowLeft]}>
-                {!isMe && (
+                {!isMe ? (
                     <View style={styles.msgAvatar}>
-                        <Text style={styles.msgAvatarText}>{item.senderName.split(' ').map((n: string) => n[0]).join('')}</Text>
+                        <Text style={styles.msgAvatarText}>{item.senderName.split(' ').map((name) => name[0]).join('').slice(0, 2)}</Text>
                     </View>
-                )}
+                ) : null}
                 <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
                     <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>{item.message}</Text>
-                    <Text style={[styles.msgTime, isMe ? { color: 'rgba(255,255,255,0.6)' } : {}]}>
+                    <Text style={[styles.msgTime, isMe && styles.msgTimeMe]}>
                         {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                 </View>
@@ -173,13 +198,11 @@ export default function ChatScreen() {
     return (
         <KeyboardAvoidingView
             style={styles.root}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-            {/* ── Header ── */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
                     <MaterialCommunityIcons name="arrow-left" size={22} color={DARK} />
@@ -188,65 +211,112 @@ export default function ChatScreen() {
                 <View style={styles.driverInfo}>
                     <View style={styles.avatarSmall}>
                         <Text style={styles.avatarSmallText}>
-                            {(user?.role === 'passenger' ? (driverName ?? 'DR') : 'PS').split(' ').map((n: string) => n[0]).join('')}
+                            {counterpartName.split(' ').map((name) => name[0]).join('').slice(0, 2)}
                         </Text>
                     </View>
-                    <View>
-                        <Text style={styles.driverName}>{user?.role === 'passenger' ? driverName : 'Passenger'}</Text>
-                        {user?.role === 'passenger' ? (
-                            <Text style={styles.vehicleText}>{vehicleColor} {vehicleMake} {vehicleModel} · {vehiclePlate}</Text>
-                        ) : (
-                            <Text style={styles.vehicleText}>Pick up location: {destName}</Text>
-                        )}
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.driverName}>{counterpartName}</Text>
+                        <Text style={styles.vehicleText} numberOfLines={1}>
+                            {user?.role === 'passenger'
+                                ? `${trip?.vehicleColor || ''} ${trip?.vehicleMake || ''} ${trip?.vehicleModel || ''} ${trip?.vehiclePlate || ''}`.trim() || 'Accepted ride'
+                                : `Pickup: ${trip?.pickupLocation || 'Loading pickup point'}`}
+                        </Text>
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.callBtn} onPress={handleCall}>
+                <TouchableOpacity
+                    style={styles.sosBtn}
+                    onPress={() => router.push({ pathname: '/report-incident', params: { tripId } })}
+                >
+                    <MaterialCommunityIcons name="alert-octagon" size={18} color="#fff" />
+                    <Text style={styles.sosText}>SOS</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.callBtn} onPress={() => setShowCallMenu(true)}>
                     <MaterialCommunityIcons name="phone" size={20} color="#fff" />
                 </TouchableOpacity>
             </View>
 
-            {/* ── Ride Info Banner ── */}
-            <View style={styles.rideBanner}>
-                <View style={styles.rideBannerItem}>
-                    <MaterialCommunityIcons name="map-marker" size={14} color={ORANGE} />
-                    <Text style={styles.rideBannerText} numberOfLines={1}>{destName}</Text>
+            <View style={styles.tripCard}>
+                <View style={styles.tripCardTop}>
+                    <View>
+                        <Text style={styles.tripEyebrow}>Live trip</Text>
+                        <Text style={styles.tripTitle}>{demo?.phaseTitle || 'Connecting your ride'}</Text>
+                        <Text style={styles.tripSubtitle}>{demo?.phaseDetail || 'Loading the accepted ride details...'}</Text>
+                    </View>
+                    <View style={styles.tripCountdown}>
+                        <Text style={styles.tripCountdownValue}>{demo?.minutesLeft ?? '--'} min</Text>
+                        <Text style={styles.tripCountdownLabel}>{countdownLabel}</Text>
+                    </View>
                 </View>
-                <View style={styles.rideBannerDivider} />
-                <View style={styles.rideBannerItem}>
-                    <MaterialCommunityIcons name="cash" size={14} color={ORANGE} />
-                    <Text style={styles.rideBannerText}>${fare}</Text>
+
+                <View style={styles.tripMap}>
+                    {trip ? (
+                        <LeafletMap
+                            userLat={null}
+                            userLon={null}
+                            pickupLat={trip.pickupLat}
+                            pickupLon={trip.pickupLon}
+                            destLat={trip.destLat}
+                            destLon={trip.destLon}
+                            driverLat={demo?.driverLat ?? null}
+                            driverLon={demo?.driverLon ?? null}
+                        />
+                    ) : (
+                        <View style={styles.mapLoading}>
+                            <ActivityIndicator color={ORANGE} />
+                        </View>
+                    )}
                 </View>
-                <View style={styles.rideBannerDivider} />
-                <View style={[styles.rideBannerItem, styles.statusBadge]}>
-                    <View style={styles.statusDot} />
-                    <Text style={styles.statusText}>Confirmed</Text>
+
+                <View style={styles.tripMetaRow}>
+                    <View style={styles.tripMetaChip}>
+                        <MaterialCommunityIcons name="map-marker-outline" size={14} color={ORANGE} />
+                        <Text style={styles.tripMetaText} numberOfLines={1}>{trip?.pickupLocation || 'Pickup loading'}</Text>
+                    </View>
+                    <View style={styles.tripMetaChip}>
+                        <MaterialCommunityIcons name="flag-checkered" size={14} color={ORANGE} />
+                        <Text style={styles.tripMetaText} numberOfLines={1}>{trip?.destinationLocation || 'Destination loading'}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.tripBottomRow}>
+                    <View style={styles.rideBadge}>
+                        <View style={styles.statusDot} />
+                        <Text style={styles.rideBadgeText}>{demo?.countdownLabel || 'Syncing trip'}</Text>
+                    </View>
+                    <Text style={styles.fareText}>{trip?.fare ? `$${trip.fare.toFixed(2)}` : ''}</Text>
                 </View>
             </View>
 
-            {/* ── Messages ── */}
-            <FlatList
-                ref={listRef}
-                data={messages}
-                keyExtractor={m => m.id}
-                renderItem={renderMessage}
-                contentContainerStyle={styles.messageList}
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                    <View style={styles.emptyChat}>
-                        <MaterialCommunityIcons name="chat-outline" size={36} color="#DDD" />
-                        <Text style={styles.emptyChatText}>Say hi to your driver!</Text>
-                    </View>
-                }
-            />
+            {!trip && sessionLoading ? (
+                <View style={styles.centered}>
+                    <ActivityIndicator size="large" color={ORANGE} />
+                    <Text style={styles.loadingText}>Loading your accepted ride...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    ref={listRef}
+                    data={messages}
+                    keyExtractor={(message) => message.id}
+                    renderItem={renderMessage}
+                    contentContainerStyle={styles.messageList}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={
+                        <View style={styles.emptyChat}>
+                            <MaterialCommunityIcons name="chat-outline" size={36} color="#DDD" />
+                            <Text style={styles.emptyChatText}>Messaging is ready. Say hello and coordinate the pickup.</Text>
+                        </View>
+                    }
+                />
+            )}
 
-            {/* ── Input Bar ── */}
             <View style={styles.inputBar}>
                 <TextInput
                     style={styles.input}
                     value={text}
                     onChangeText={setText}
-                    placeholder="Message your driver..."
+                    placeholder={user?.role === 'driver' ? 'Message your passenger...' : 'Message your driver...'}
                     placeholderTextColor={GRAY}
                     multiline
                     maxLength={300}
@@ -255,13 +325,16 @@ export default function ChatScreen() {
                     style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
                     onPress={handleSend}
                     disabled={!text.trim() || sending}
-                    activeOpacity={0.8}
+                    activeOpacity={0.85}
                 >
-                    <MaterialCommunityIcons name="send" size={20} color="#fff" />
+                    {sending ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <MaterialCommunityIcons name="send" size={20} color="#fff" />
+                    )}
                 </TouchableOpacity>
             </View>
 
-            {/* ── Call Menu Modal ── */}
             <Modal
                 visible={showCallMenu}
                 transparent
@@ -272,8 +345,8 @@ export default function ChatScreen() {
                     <View style={styles.modalOverlay}>
                         <TouchableWithoutFeedback>
                             <View style={styles.menuContent}>
-                                <Text style={styles.menuTitle}>How would you like to call?</Text>
-                                <Text style={styles.menuSubTitle}>{driverName}</Text>
+                                <Text style={styles.menuTitle}>Call {counterpartName}</Text>
+                                <Text style={styles.menuSubTitle}>Choose how you want to connect.</Text>
 
                                 <TouchableOpacity style={styles.menuBtn} onPress={handleCarrierCall}>
                                     <View style={[styles.menuIcon, { backgroundColor: '#F0F9FF' }]}>
@@ -281,7 +354,7 @@ export default function ChatScreen() {
                                     </View>
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.menuBtnText}>Carrier Call</Text>
-                                        <Text style={styles.menuBtnSub}>Standard mobile network call</Text>
+                                        <Text style={styles.menuBtnSub}>Use the phone network for a regular call</Text>
                                     </View>
                                     <MaterialCommunityIcons name="chevron-right" size={20} color={GRAY} />
                                 </TouchableOpacity>
@@ -292,7 +365,7 @@ export default function ChatScreen() {
                                     </View>
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.menuBtnText}>In-App Call</Text>
-                                        <Text style={styles.menuBtnSub}>Free internet call via ShicShic</Text>
+                                        <Text style={styles.menuBtnSub}>Stay in the trip view with the live map and timer</Text>
                                     </View>
                                     <MaterialCommunityIcons name="chevron-right" size={20} color={GRAY} />
                                 </TouchableOpacity>
@@ -310,8 +383,7 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#F7F7F9' },
-
+    root: { flex: 1, backgroundColor: BG },
     header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 56 : 36, paddingHorizontal: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', gap: 10 },
     backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center' },
     driverInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -319,39 +391,52 @@ const styles = StyleSheet.create({
     avatarSmallText: { fontSize: 13, fontWeight: '800', color: ORANGE },
     driverName: { fontSize: 15, fontWeight: '700', color: DARK },
     vehicleText: { fontSize: 11, color: GRAY },
-    callBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#22C55E', justifyContent: 'center', alignItems: 'center', shadowColor: '#22C55E', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+    sosBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+    sosText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+    callBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#22C55E', justifyContent: 'center', alignItems: 'center' },
 
-    rideBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', gap: 10 },
-    rideBannerItem: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-    rideBannerText: { fontSize: 12, fontWeight: '600', color: DARK, flex: 1 },
-    rideBannerDivider: { width: 1, height: 16, backgroundColor: '#EBEBEB' },
-    statusBadge: { flex: 0.8 },
-    statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
-    statusText: { fontSize: 12, fontWeight: '700', color: '#22C55E' },
+    tripCard: { margin: 16, marginBottom: 8, backgroundColor: '#fff', borderRadius: 24, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.06, shadowRadius: 18, elevation: 4 },
+    tripCardTop: { flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginBottom: 12 },
+    tripEyebrow: { fontSize: 11, fontWeight: '800', color: ORANGE, textTransform: 'uppercase', letterSpacing: 0.6 },
+    tripTitle: { marginTop: 4, fontSize: 18, fontWeight: '800', color: DARK },
+    tripSubtitle: { marginTop: 3, fontSize: 12, lineHeight: 18, color: GRAY, maxWidth: 220 },
+    tripCountdown: { backgroundColor: ORANGE_LIGHT, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 18, alignItems: 'center', justifyContent: 'center', minWidth: 84 },
+    tripCountdownValue: { fontSize: 20, fontWeight: '900', color: ORANGE },
+    tripCountdownLabel: { fontSize: 11, fontWeight: '700', color: '#A65100' },
+    tripMap: { height: 220, overflow: 'hidden', borderRadius: 18, backgroundColor: '#F0F0F0' },
+    mapLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    tripMetaRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    tripMetaChip: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F7F7F9', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 10 },
+    tripMetaText: { flex: 1, fontSize: 11, color: DARK, fontWeight: '600' },
+    tripBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+    rideBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0FDF4', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 8 },
+    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
+    rideBadgeText: { fontSize: 12, fontWeight: '700', color: '#166534' },
+    fareText: { fontSize: 16, fontWeight: '900', color: DARK },
 
-    messageList: { padding: 16, gap: 8 },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingHorizontal: 30 },
+    loadingText: { fontSize: 14, color: GRAY, textAlign: 'center' },
+    messageList: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
     msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 4 },
     msgRowRight: { justifyContent: 'flex-end' },
     msgRowLeft: { justifyContent: 'flex-start' },
     msgAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
     msgAvatarText: { fontSize: 10, fontWeight: '700', color: DARK },
-    bubble: { maxWidth: '72%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+    bubble: { maxWidth: '74%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
     bubbleMe: { backgroundColor: ORANGE, borderBottomRightRadius: 4 },
     bubbleThem: { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 1 },
     bubbleText: { fontSize: 15, lineHeight: 21 },
     bubbleTextMe: { color: '#fff' },
     bubbleTextThem: { color: DARK },
     msgTime: { fontSize: 10, color: GRAY, marginTop: 3, alignSelf: 'flex-end' },
-
-    emptyChat: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 8 },
-    emptyChatText: { color: '#CCC', fontWeight: '600', fontSize: 14 },
-
+    msgTimeMe: { color: 'rgba(255,255,255,0.7)' },
+    emptyChat: { alignItems: 'center', justifyContent: 'center', paddingTop: 48, gap: 8 },
+    emptyChatText: { color: '#B9BFCE', fontWeight: '600', fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
     inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F0F0F0' },
     input: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, color: DARK, maxHeight: 100 },
-    sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center', shadowColor: ORANGE, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 3 },
-    sendBtnDisabled: { backgroundColor: '#FFD6B0', shadowOpacity: 0 },
+    sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE, justifyContent: 'center', alignItems: 'center' },
+    sendBtnDisabled: { backgroundColor: '#FFD6B0' },
 
-    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     menuContent: { backgroundColor: '#fff', borderRadius: 24, width: '100%', padding: 24, alignItems: 'center' },
     menuTitle: { fontSize: 18, fontWeight: '800', color: DARK, marginBottom: 4 },

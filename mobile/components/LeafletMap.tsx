@@ -1,32 +1,53 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-export interface PlaceSuggestion {
-    display_name: string;
-    lat: string;
-    lon: string;
-}
-
 interface Props {
-    userLat: number | null;
-    userLon: number | null;
-    destLat: number | null;
-    destLon: number | null;
-    onReady?: () => void;
+  userLat: number | null;
+  userLon: number | null;
+  pickupLat: number | null;
+  pickupLon: number | null;
+  destLat: number | null;
+  destLon: number | null;
+  driverLat?: number | null;
+  driverLon?: number | null;
+  onReady?: () => void;
+  onMapPress?: (coords: { lat: number; lon: number }) => void;
 }
 
-export default function LeafletMap({ userLat, userLon, destLat, destLon, onReady }: Props) {
-    const webRef = useRef<WebView>(null);
+export default function LeafletMap({
+  userLat,
+  userLon,
+  pickupLat,
+  pickupLon,
+  destLat,
+  destLon,
+  driverLat = null,
+  driverLon = null,
+  onReady,
+  onMapPress,
+}: Props) {
+  const webRef = useRef<WebView>(null);
 
-    // Send updated coordinates to the map whenever props change
-    useEffect(() => {
-        if (!webRef.current) return;
-        const msg = JSON.stringify({ type: 'UPDATE', userLat, userLon, destLat, destLon });
-        webRef.current.postMessage(msg);
-    }, [userLat, userLon, destLat, destLon]);
+  useEffect(() => {
+    if (!webRef.current) return;
 
-    const html = `
+    const message = JSON.stringify({
+      type: 'UPDATE',
+      userLat,
+      userLon,
+      pickupLat,
+      pickupLon,
+      destLat,
+      destLon,
+      driverLat,
+      driverLon,
+    });
+
+    webRef.current.postMessage(message);
+  }, [destLat, destLon, driverLat, driverLon, pickupLat, pickupLon, userLat, userLon]);
+
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -37,7 +58,44 @@ export default function LeafletMap({ userLat, userLon, destLat, destLon, onReady
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body, #map { width: 100%; height: 100vh; }
   .leaflet-routing-container { display: none !important; }
-  .custom-user-icon { background: #FF6B00; border: 3px solid #fff; border-radius: 50%; width: 16px; height: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+  .current-icon {
+    background: #2563EB;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  }
+  .pickup-icon {
+    background: #16A34A;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+  }
+  .car-icon {
+    width: 34px;
+    height: 18px;
+    background: #FF6B00;
+    border-radius: 9px;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 10px rgba(255, 107, 0, 0.3);
+    position: relative;
+  }
+  .car-icon::before,
+  .car-icon::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #111827;
+    border: 1px solid #fff;
+  }
+  .car-icon::before { left: 3px; }
+  .car-icon::after { right: 3px; }
 </style>
 </head>
 <body>
@@ -46,23 +104,37 @@ export default function LeafletMap({ userLat, userLon, destLat, destLon, onReady
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 <script>
   const DEFAULT_LAT = -17.8292;
-  const DEFAULT_LON = 31.0522; // Harare, Zimbabwe default
+  const DEFAULT_LON = 31.0522;
 
-  const map = L.map('map', { zoomControl: true, attributionControl: false }).setView(
-    [DEFAULT_LAT, DEFAULT_LON], 13
-  );
+  const map = L.map('map', {
+    zoomControl: true,
+    attributionControl: false
+  }).setView([DEFAULT_LAT, DEFAULT_LON], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
 
-  const orangeIcon = L.divIcon({
-    className: 'custom-user-icon',
+  const currentIcon = L.divIcon({
+    className: 'current-icon',
     iconSize: [16, 16],
     iconAnchor: [8, 8]
   });
 
-  const destIcon = L.icon({
+  const pickupIcon = L.divIcon({
+    className: 'pickup-icon',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+
+  const carIcon = L.divIcon({
+    className: '',
+    html: '<div class="car-icon"></div>',
+    iconSize: [34, 18],
+    iconAnchor: [17, 9]
+  });
+
+  const destinationIcon = L.icon({
     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
@@ -71,77 +143,158 @@ export default function LeafletMap({ userLat, userLon, destLat, destLon, onReady
     shadowSize: [41, 41]
   });
 
-  let userMarker = null;
-  let destMarker = null;
+  let currentMarker = null;
+  let pickupMarker = null;
+  let destinationMarker = null;
+  let driverMarker = null;
   let routeControl = null;
 
-  function updateMap(userLat, userLon, destLat, destLon) {
-    // User location marker
-    if (userLat && userLon) {
-      const userLatLng = [userLat, userLon];
-      if (!userMarker) {
-        userMarker = L.marker(userLatLng, { icon: orangeIcon })
-          .addTo(map)
-          .bindPopup('You are here');
+  const samePoint = (firstLat, firstLon, secondLat, secondLon) => {
+    if ([firstLat, firstLon, secondLat, secondLon].some((value) => typeof value !== 'number')) {
+      return false;
+    }
+
+    return Math.abs(firstLat - secondLat) < 0.00001 && Math.abs(firstLon - secondLon) < 0.00001;
+  };
+
+  const resetRoute = () => {
+    if (routeControl) {
+      map.removeControl(routeControl);
+      routeControl = null;
+    }
+  };
+
+  const removeMarker = (marker) => {
+    if (!marker) return null;
+    map.removeLayer(marker);
+    return null;
+  };
+
+  const addPoint = (points, lat, lon) => {
+    if (typeof lat === 'number' && typeof lon === 'number') {
+      points.push([lat, lon]);
+    }
+  };
+
+  function updateMarker(marker, latLng, icon, popupText) {
+    if (!marker) {
+      return L.marker(latLng, { icon }).addTo(map).bindPopup(popupText);
+    }
+
+    marker.setLatLng(latLng);
+    return marker;
+  }
+
+  function updateMap(userLat, userLon, pickupLat, pickupLon, destLat, destLon, driverLat, driverLon) {
+    const points = [];
+    resetRoute();
+
+    if (typeof userLat === 'number' && typeof userLon === 'number') {
+      currentMarker = updateMarker(currentMarker, [userLat, userLon], currentIcon, 'Your location');
+      addPoint(points, userLat, userLon);
+    } else {
+      currentMarker = removeMarker(currentMarker);
+    }
+
+    if (typeof pickupLat === 'number' && typeof pickupLon === 'number') {
+      if (samePoint(driverLat, driverLon, pickupLat, pickupLon)) {
+        pickupMarker = removeMarker(pickupMarker);
       } else {
-        userMarker.setLatLng(userLatLng);
+        pickupMarker = updateMarker(pickupMarker, [pickupLat, pickupLon], pickupIcon, 'Pickup point');
+      }
+      addPoint(points, pickupLat, pickupLon);
+    } else {
+      pickupMarker = removeMarker(pickupMarker);
+    }
+
+    if (typeof destLat === 'number' && typeof destLon === 'number') {
+      destinationMarker = updateMarker(destinationMarker, [destLat, destLon], destinationIcon, 'Destination');
+      addPoint(points, destLat, destLon);
+    } else {
+      destinationMarker = removeMarker(destinationMarker);
+    }
+
+    if (typeof driverLat === 'number' && typeof driverLon === 'number') {
+      driverMarker = updateMarker(driverMarker, [driverLat, driverLon], carIcon, 'Driver');
+      addPoint(points, driverLat, driverLon);
+    } else {
+      driverMarker = removeMarker(driverMarker);
+    }
+
+    const waypoints = [];
+    if (typeof driverLat === 'number' && typeof driverLon === 'number') {
+      waypoints.push(L.latLng(driverLat, driverLon));
+    } else if (typeof userLat === 'number' && typeof userLon === 'number') {
+      waypoints.push(L.latLng(userLat, userLon));
+    }
+
+    if (typeof pickupLat === 'number' && typeof pickupLon === 'number') {
+      if (!samePoint(driverLat, driverLon, pickupLat, pickupLon) && !samePoint(userLat, userLon, pickupLat, pickupLon)) {
+        waypoints.push(L.latLng(pickupLat, pickupLon));
       }
     }
 
-    // Destination marker
-    if (destLat && destLon) {
-      const destLatLng = [destLat, destLon];
-      if (!destMarker) {
-        destMarker = L.marker(destLatLng, { icon: destIcon })
-          .addTo(map)
-          .bindPopup('Destination');
-      } else {
-        destMarker.setLatLng(destLatLng);
-      }
+    if (typeof destLat === 'number' && typeof destLon === 'number') {
+      waypoints.push(L.latLng(destLat, destLon));
+    }
 
-      // Draw route if we have both points
-      if (userLat && userLon) {
-        if (routeControl) {
-          map.removeControl(routeControl);
-        }
-        routeControl = L.Routing.control({
-          waypoints: [
-            L.latLng(userLat, userLon),
-            L.latLng(destLat, destLon)
-          ],
-          router: L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
-          }),
-          lineOptions: {
-            styles: [{ color: '#FF6B00', weight: 5, opacity: 0.85 }]
-          },
-          show: false,
-          addWaypoints: false,
-          createMarker: () => null
-        }).addTo(map);
+    if (waypoints.length >= 2) {
+      routeControl = L.Routing.control({
+        waypoints,
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
+        lineOptions: {
+          styles: [
+            { color: '#FF6B00', weight: 5, opacity: 0.2 },
+            { color: '#FF6B00', weight: 3, opacity: 0.9 }
+          ]
+        },
+        show: false,
+        addWaypoints: false,
+        fitSelectedRoutes: false,
+        createMarker: () => null
+      }).addTo(map);
+    }
 
-        // Fit map to show both points
-        const bounds = L.latLngBounds([userLat, userLon], [destLat, destLon]);
-        map.fitBounds(bounds, { padding: [40, 40] });
-      } else {
-        map.setView([destLat, destLon], 15);
-      }
-    } else if (userLat && userLon) {
-      map.setView([userLat, userLon], 15);
+    if (points.length === 1) {
+      map.setView(points[0], 15);
+      return;
+    }
+
+    if (points.length > 1) {
+      map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
     }
   }
 
-  // Listen for messages from React Native
-  document.addEventListener('message', (e) => handleMsg(e.data));
-  window.addEventListener('message', (e) => handleMsg(e.data));
+  map.on('click', (event) => {
+    const payload = JSON.stringify({
+      type: 'MAP_PRESS',
+      lat: event.latlng.lat,
+      lon: event.latlng.lng
+    });
 
-  function handleMsg(raw) {
+    window.ReactNativeWebView?.postMessage(payload);
+  });
+
+  document.addEventListener('message', (event) => handleMessage(event.data));
+  window.addEventListener('message', (event) => handleMessage(event.data));
+
+  function handleMessage(raw) {
     try {
-      const msg = JSON.parse(raw);
-      if (msg.type === 'UPDATE') {
-        updateMap(msg.userLat, msg.userLon, msg.destLat, msg.destLon);
-      }
-    } catch (e) {}
+      const message = JSON.parse(raw);
+      if (message.type !== 'UPDATE') return;
+      updateMap(
+        message.userLat,
+        message.userLon,
+        message.pickupLat,
+        message.pickupLon,
+        message.destLat,
+        message.destLon,
+        message.driverLat,
+        message.driverLon
+      );
+    } catch (error) {}
   }
 
   window.onload = () => {
@@ -151,24 +304,31 @@ export default function LeafletMap({ userLat, userLon, destLat, destLon, onReady
 </body>
 </html>`;
 
-    return (
-        <WebView
-            ref={webRef}
-            style={styles.map}
-            source={{ html }}
-            originWhitelist={['*']}
-            javaScriptEnabled
-            domStorageEnabled
-            onMessage={(e) => {
-                try {
-                    const msg = JSON.parse(e.nativeEvent.data);
-                    if (msg.type === 'READY') onReady?.();
-                } catch { }
-            }}
-        />
-    );
+  return (
+    <WebView
+      ref={webRef}
+      style={styles.map}
+      source={{ html }}
+      originWhitelist={['*']}
+      javaScriptEnabled
+      domStorageEnabled
+      onMessage={(event) => {
+        try {
+          const message = JSON.parse(event.nativeEvent.data);
+          if (message.type === 'READY') {
+            onReady?.();
+            return;
+          }
+
+          if (message.type === 'MAP_PRESS') {
+            onMapPress?.({ lat: Number(message.lat), lon: Number(message.lon) });
+          }
+        } catch (error) {}
+      }}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
-    map: { flex: 1, backgroundColor: '#f0f0f0' },
+  map: { flex: 1, backgroundColor: '#f0f0f0' },
 });

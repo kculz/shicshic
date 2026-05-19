@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import Animated, { FadeInUp, FadeOutDown, Layout } from 'react-native-reanimated';
 import apiClient from '../api/client';
+import { useTripStore } from '../store/useTripStore';
 
 const ORANGE = '#FF6B00';
 const ORANGE_LIGHT = '#FFF3EA';
@@ -47,6 +48,7 @@ export default function BiddingScreen() {
     const [loading, setLoading] = useState(true);
     const [acceptingId, setAcceptingId] = useState<string | null>(null);
     const router = useRouter();
+    const { fetchTripSession } = useTripStore();
 
     const loadBids = useCallback(async () => {
         try {
@@ -88,19 +90,10 @@ export default function BiddingScreen() {
         setAcceptingId(bid.id);
         try {
             await apiClient.post(`/trips/${tripId}/bids/${bid.id}/accept`);
+            await fetchTripSession(tripId);
             router.replace({
                 pathname: '/chat' as any,
-                params: {
-                    tripId,
-                    driverName: bid.driverName,
-                    driverPhone: bid.driverPhone,
-                    vehicleMake: bid.vehicleMake,
-                    vehicleModel: bid.vehicleModel || '',
-                    vehiclePlate: bid.vehiclePlate,
-                    vehicleColor: bid.vehicleColor || '',
-                    fare: String(bid.offeredFare),
-                    destName,
-                },
+                params: { tripId },
             });
         } catch (e: any) {
             Alert.alert('Error', e.response?.data?.error || 'Could not accept driver');
