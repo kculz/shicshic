@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requestTrip, getTrip, getTripSession, acceptTrip, listAvailableTrips, getActiveTrip, getActiveTripSession } from '../controllers/trip.controller.js';
 import { getFareEstimate, simulateDriverBids, getTripBids, acceptBid, rejectBid, getChatMessages, sendChatMessage, placeBid } from '../controllers/bid.controller.js';
-import { initiateCall, updateCallStatus, getActiveCall } from '../controllers/call.controller.js';
+import { appendCallCandidate, getActiveCall, initiateCall, saveCallAnswer, saveCallOffer, updateCallStatus } from '../controllers/call.controller.js';
 
 const router = Router();
 
@@ -28,6 +28,9 @@ router.post('/:id/messages', sendChatMessage);
 // Calls
 router.post('/calls', initiateCall);
 router.get('/calls/active', getActiveCall);
+router.post('/calls/:id/offer', saveCallOffer);
+router.post('/calls/:id/answer', saveCallAnswer);
+router.post('/calls/:id/candidates', appendCallCandidate);
 router.patch('/calls/:id', updateCallStatus);
 
 export default router;
